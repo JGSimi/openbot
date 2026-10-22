@@ -1,0 +1,119 @@
+name: Release desktop (fork)
+
+# Builds the Apple silicon DMG and ZIP for this personal fork, signs and notarizes them with the
+# fork owner's Developer ID, and publishes them to this repository's releases, where the in-app
+# updater finds them. Push a tag that matches package.json, for example `v0.47.1`.
+# Upstream's release.yml only works with upstream's secrets and Apple team, so it never runs here.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions: {}
+
+concurrency:
+  group: release-fork
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    name: Build signed macOS ARM64 release
+    if: github.repository == 'JGSimi/openbot'
+    runs-on: macos-14
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          install: none
+
+      - name: Require matching version and signing credentials
+        shell: bash
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+        run: |
+          package_version="$(bun -p 'require("./package.json").version')"
+          if [[ "${GITHUB_REF_NAME#v}" != "$package_version" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $package_version." >&2
+            exit 1
+          fi
+          missing=()
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then missing+=("$name"); fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "Missing repository secrets: ${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install and verify native runtimes
+        run: |
+          bun run install:codex-runtime
+          bun run install:claude-runtime
+          bun run install:grok-runtime
+          bun run install:remote-desktop-runtime
+          bun run verify:remote-desktop-runtime
+          bun run prepare:cua-driver
+
+      # Same retries as upstream release.yml: these hosted-runner failures are transient.
+      - name: Build, sign, and notarize
+        shell: bash
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+        run: |
+          bun run voice:prepare-runtime
+          bun run build
+          # A `--config.*` override next to `--config <file>` makes electron-builder load the default
+          # electron-builder.yml on top, which restores upstream's publish owner. A generated file does not.
+          printf 'extends: ./electron-builder.fork.yml\nmac:\n  extendInfo:\n    ElectronTeamID: "%s"\n' \
+            "$APPLE_TEAM_ID" > electron-builder.ci.yml
+          log="$RUNNER_TEMP/electron-builder-mac.log"
+          for attempt in 1 2 3; do
+            if bun x electron-builder --mac --arm64 --publish never \
+              --config electron-builder.ci.yml 2>&1 | tee "$log"; then
+              exit 0
+            fi
+            if grep -Eq 'hdiutil: create failed - (Device not configured|Resource busy)|The network connection was lost|getaddrinfo ENOTFOUND' "$log"; then
+              echo "::warning::Transient build failure (attempt $attempt of 3)."
+            else
+              exit 1
+            fi
+          done
+          exit 1
+
+      - name: Verify signature and notarization
+        shell: bash
+        run: |
+          app_path="dist/mac-arm64/OpenBot.app"
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          spctl --assess --type execute --verbose=2 "$app_path"
+          xcrun stapler validate "$app_path"
+          grep -F "version: ${GITHUB_REF_NAME#v}" dist/latest-mac.yml
+
+      # Published only after verification, so the updater never sees a broken build.
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --latest \
+            --title "OpenBot $GITHUB_REF_NAME" --notes "Personal build of upstream OpenBot $GITHUB_REF_NAME." \
+            dist/*.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml

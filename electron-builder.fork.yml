@@ -1,0 +1,13 @@
+# Personal fork build: signs with the fork owner's Developer ID and publishes updates to the fork's
+# GitHub releases (release-fork.yml uploads them; this sets the updater feed). Everything else
+# comes from the upstream config, so upstream merges stay clean.
+# `ElectronTeamID` comes from `APPLE_TEAM_ID` in a config that release-fork.yml generates on top of this one.
+extends: ./electron-builder.yml
+publish:
+  provider: github
+  owner: JGSimi
+  repo: openbot
+mac:
+  # Upstream entitlements carry Universal Links and upstream's team ID, which need upstream's
+  # provisioning profile. Without that profile a Developer ID build is killed at launch.
+  entitlements: build/entitlements.fork.mac.plist
