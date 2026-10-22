@@ -530,7 +530,7 @@ export class MobileChannelStore {
   }
 }
 
-export function mergeLatestChannelPage(current: ChannelPage | undefined, page: ChannelPage): ChannelPage {
+function mergeLatestChannelPage(current: ChannelPage | undefined, page: ChannelPage): ChannelPage {
   if (!current) return page;
   const first = page.messages[0]?.sequence ?? 0;
   const older = current.messages.filter((message) => message.sequence < first);
