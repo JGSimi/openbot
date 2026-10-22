@@ -347,4 +347,3 @@ jobs:
           elif [ "$PASSED" = "true" ] && [ -n "$open" ]; then
             gh issue close "$open" --comment "The checks run again: $RUN_URL"
           fi
-

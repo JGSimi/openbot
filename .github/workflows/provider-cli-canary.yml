@@ -95,4 +95,3 @@ jobs:
           elif [ "$PASSED" = "true" ] && [ -n "$open" ]; then
             gh issue close "$open" --comment "The canary passes again: $RUN_URL"
           fi
-

@@ -159,4 +159,3 @@ jobs:
             echo "Artifact: android-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
             echo 'Manage testers and promote releases in Play Console. This workflow does not publish to production.'
           } >> "$GITHUB_STEP_SUMMARY"
-

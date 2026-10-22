@@ -67,4 +67,3 @@ jobs:
           if [[ -n "$version" ]]; then
             bun scripts/discord-mobile-release-announcement.ts check "$version"
           fi
-

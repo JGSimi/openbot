@@ -98,4 +98,3 @@ jobs:
           DISCORD_MOBILE_RELEASE_ROLE_ID: ${{ vars.DISCORD_MOBILE_RELEASE_ROLE_ID }}
           RELEASE_VERSION: ${{ needs.detect.outputs.version }}
         run: bun scripts/discord-mobile-release-announcement.ts send "$RELEASE_VERSION"
-
