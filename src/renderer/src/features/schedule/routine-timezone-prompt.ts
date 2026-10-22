@@ -209,7 +209,11 @@ export function createRoutineTimezonePrompt(targets: () => RoutineZoneTarget[]):
     await check(target);
   }
 
+  /** The device zone of the last check of every server. */
+  let checkedZone = deviceZone();
+
   function checkAll(): void {
+    checkedZone = deviceZone();
     const current = untrack(targets);
     for (const serverId of shown.keys()) {
       if (current.some((target) => target.id === serverId)) continue;
@@ -226,8 +230,17 @@ export function createRoutineTimezonePrompt(targets: () => RoutineZoneTarget[]):
         .join("\n"),
     () => checkAll(),
   );
+  // A focus reads every server only after the device zone changed. Otherwise it reads only the servers
+  // with a prompt, so a prompt closes when another device moved those routines.
   const recheck = () => {
-    if (document.visibilityState === "visible") checkAll();
+    if (document.visibilityState !== "visible") return;
+    if (deviceZone() !== checkedZone) {
+      checkAll();
+      return;
+    }
+    for (const target of untrack(targets)) {
+      if (shown.has(target.id)) void check(target);
+    }
   };
   window.addEventListener("focus", recheck);
   document.addEventListener("visibilitychange", recheck);
