@@ -22,14 +22,11 @@ const featureFlags = `    val reactNativeFeatureFlags: com.facebook.react.intern
 
 /** @param {string} contents */
 function addFeatureFlags(contents) {
-  if (!/^\s*loadReactNative\(this\)$/m.test(contents)) {
-    throw new Error("MainApplication.kt does not call loadReactNative(this).");
-  }
   return mergeContents({
     src: contents,
     newSrc: featureFlags,
     tag: "openbot-react-native-feature-flags",
-    anchor: /^\s*loadReactNative\(this\)$/m,
+    anchor: /^\s*loadReactNative\(this\)$/,
     offset: 1,
     comment: "//",
   }).contents;
