@@ -78,11 +78,28 @@ function eventOwner(owner: RoutineCalendarOwner): EventRoutineOwner {
 
 const zoneLabel = (zone: string) => zone.replaceAll("_", " ");
 
+/** The routines of `target` whose zone moves their clock times, by zone. */
+async function routinesByZone(target: RoutineZoneTarget): Promise<Map<string, RoutineCalendarRoutine[]>> {
+  const from = new Date(Date.now() + 60_000);
+  const calendar = await target.calendar({
+    from: from.toISOString(),
+    to: new Date(from.getTime() + 60_000).toISOString(),
+  });
+  const byZone = new Map<string, RoutineCalendarRoutine[]>();
+  for (const routine of calendar.routines) {
+    if (!followsClock(routine)) continue;
+    byZone.set(routine.timezone, [...(byZone.get(routine.timezone) ?? []), routine]);
+  }
+  return byZone;
+}
+
 /**
  * Saves each routine in `from` again in `to`. The host keeps its ID and runs and computes the next run
  * at the same clock time in `to`. A Server Settings zone of `from` follows, so new routines match.
  */
-async function moveRoutines(target: RoutineZoneTarget, routines: RoutineCalendarRoutine[], from: string, to: string) {
+async function moveRoutines(target: RoutineZoneTarget, from: string, to: string) {
+  // Read the routines again: the toast can show for a long time before the click.
+  const routines = (await routinesByZone(target)).get(from) ?? [];
   const owners = new Map<string, EventRoutineOwner>();
   for (const routine of routines) {
     const owner = eventOwner(routine.owner);
@@ -115,7 +132,7 @@ async function moveRoutines(target: RoutineZoneTarget, routines: RoutineCalendar
       }
     }
   }
-  if (target.timezone) {
+  if (target.timezone && moved > 0) {
     const setting = await target.timezone.getTimezone(target.id);
     if (setting.timezone === from) await target.timezone.setTimezone(to, target.id);
   }
@@ -129,26 +146,20 @@ async function moveRoutines(target: RoutineZoneTarget, routines: RoutineCalendar
  */
 export function createRoutineTimezonePrompt(targets: () => RoutineZoneTarget[]): void {
   const checking = new Set<string>();
+  /** The servers whose routines move now. A check waits for the move, so it does not ask again. */
+  const moving = new Set<string>();
   /** The source and device zone of the toast that shows for each server. */
   const shown = new Map<string, string>();
 
   async function check(target: RoutineZoneTarget): Promise<void> {
-    if (checking.has(target.id)) return;
+    if (checking.has(target.id) || moving.has(target.id)) return;
     checking.add(target.id);
     try {
       const zone = deviceZone();
       const answered = answeredZones(target.id, zone);
-      const from = new Date(Date.now() + 60_000);
-      const calendar = await target.calendar({
-        from: from.toISOString(),
-        to: new Date(from.getTime() + 60_000).toISOString(),
-      });
-      const byZone = new Map<string, RoutineCalendarRoutine[]>();
-      for (const routine of calendar.routines) {
-        if (routine.timezone === zone || answered.includes(routine.timezone) || !followsClock(routine)) continue;
-        byZone.set(routine.timezone, [...(byZone.get(routine.timezone) ?? []), routine]);
-      }
-      const next = [...byZone.entries()].sort((a, b) => b[1].length - a[1].length)[0];
+      const next = [...(await routinesByZone(target)).entries()]
+        .filter(([source]) => source !== zone && !answered.includes(source))
+        .sort((a, b) => b[1].length - a[1].length)[0];
       const key = next ? `${next[0]}>${zone}` : undefined;
       if (key === shown.get(target.id)) return;
       if (!next) {
@@ -160,10 +171,13 @@ export function createRoutineTimezonePrompt(targets: () => RoutineZoneTarget[]):
       const [source, routines] = next;
       const { t } = currentText();
       const answer = (move: boolean) => {
-        writeAnswer(target.id, zone, source);
         shown.delete(target.id);
-        if (move) void runMove(target, routines, source, zone);
-        else void check(target);
+        if (move) {
+          void runMove(target, source, zone);
+          return;
+        }
+        writeAnswer(target.id, zone, source);
+        void check(target);
       };
       toast(t("routine.timezoneMove.title", { zone: zoneLabel(zone) }), {
         id: toastId(target.id),
@@ -173,8 +187,9 @@ export function createRoutineTimezonePrompt(targets: () => RoutineZoneTarget[]):
           from: zoneLabel(source),
           zone: zoneLabel(zone),
         }),
-        // A toast closed without an answer comes back after the next start.
+        // A toast closed without an answer comes back after the next start or zone change.
         duration: Number.POSITIVE_INFINITY,
+        onDismiss: () => shown.delete(target.id),
         action: { label: t("routine.timezoneMove.move"), onClick: () => answer(true) },
         cancel: { label: t("routine.timezoneMove.keep"), onClick: () => answer(false) },
       });
@@ -185,26 +200,26 @@ export function createRoutineTimezonePrompt(targets: () => RoutineZoneTarget[]):
     }
   }
 
-  async function runMove(
-    target: RoutineZoneTarget,
-    routines: RoutineCalendarRoutine[],
-    from: string,
-    to: string,
-  ): Promise<void> {
+  /** A move that stops before its end keeps the question open, so the next check asks again. */
+  async function runMove(target: RoutineZoneTarget, from: string, to: string): Promise<void> {
     const text = currentText();
+    moving.add(target.id);
     try {
-      const { moved, failed } = await moveRoutines(target, routines, from, to);
+      const { moved, failed } = await moveRoutines(target, from, to);
+      writeAnswer(target.id, to, from);
       if (failed > 0) {
         actionToast.warning(
           text.t("routine.timezoneMove.partial", { count: failed, server: target.name, zone: zoneLabel(to) }),
         );
-      } else {
+      } else if (moved > 0) {
         actionToast.success(
           text.t("routine.timezoneMove.moved", { count: moved, server: target.name, zone: zoneLabel(to) }),
         );
       }
     } catch (error) {
       actionToast.error(text.errorMessage(error, text.t("routine.timezoneMove.failed")));
+    } finally {
+      moving.delete(target.id);
     }
     await check(target);
   }
