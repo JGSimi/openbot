@@ -163,8 +163,11 @@ export function createRoutineTimezonePrompt(targets: () => RoutineZoneTarget[]):
     checking.add(target.id);
     try {
       const zone = deviceZone();
+      const byZone = await routinesByZone(target);
+      // Read the answers after the wait: the user can answer or start a move while the list loads.
+      if (moving.has(target.id)) return;
       const answered = answeredZones(target.id, zone);
-      const next = [...(await routinesByZone(target)).entries()]
+      const next = [...byZone.entries()]
         .filter(
           ([source]) =>
             source !== zone && !answered.includes(source) && !dismissed.get(target.id)?.has(`${source}>${zone}`),
