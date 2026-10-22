@@ -161,6 +161,24 @@ export const messages = {
   "routine.card.updated": "Rutin güncellendi",
   "routine.card.open": "{name} rutinini aç",
 
+  "routine.timezoneMove.title": "Saat diliminiz artık {zone}",
+  "routine.timezoneMove.description": {
+    one: "{server} üzerindeki {count} rutin {from} saatine göre çalışıyor. {zone} saatine taşınsın mı? Saati aynı kalır.",
+    other:
+      "{server} üzerindeki {count} rutin {from} saatine göre çalışıyor. {zone} saatine taşınsın mı? Saatleri aynı kalır.",
+  },
+  "routine.timezoneMove.move": "Taşı",
+  "routine.timezoneMove.keep": "Kalsın",
+  "routine.timezoneMove.moved": {
+    one: "{server} üzerindeki {count} rutin {zone} saatine taşındı.",
+    other: "{server} üzerindeki {count} rutin {zone} saatine taşındı.",
+  },
+  "routine.timezoneMove.partial": {
+    one: "{server} üzerindeki {count} rutin {zone} saatine taşınamadı.",
+    other: "{server} üzerindeki {count} rutin {zone} saatine taşınamadı.",
+  },
+  "routine.timezoneMove.failed": "Rutinler taşınamadı.",
+
   "routine.calendar.title": "Rutinler",
   "routine.calendar.open": "Rutinleri aç",
   "routine.calendar.timeZone": "{zone} saatiyle",

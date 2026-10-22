@@ -160,6 +160,24 @@ export const messages = {
   "routine.card.created": "Routine erstellt",
   "routine.card.updated": "Routine aktualisiert",
   "routine.card.open": "Routine {name} öffnen",
+
+  "routine.timezoneMove.title": "Ihre Zeitzone ist jetzt {zone}",
+  "routine.timezoneMove.description": {
+    one: "{count} Routine auf {server} läuft nach Zeit {from}. In {zone} verschieben? Die Uhrzeit bleibt gleich.",
+    other:
+      "{count} Routinen auf {server} laufen nach Zeit {from}. In {zone} verschieben? Die Uhrzeiten bleiben gleich.",
+  },
+  "routine.timezoneMove.move": "Verschieben",
+  "routine.timezoneMove.keep": "Behalten",
+  "routine.timezoneMove.moved": {
+    one: "{count} Routine auf {server} nach Zeit {zone} verschoben.",
+    other: "{count} Routinen auf {server} nach Zeit {zone} verschoben.",
+  },
+  "routine.timezoneMove.partial": {
+    one: "{count} Routine auf {server} konnte nicht nach Zeit {zone} verschoben werden.",
+    other: "{count} Routinen auf {server} konnten nicht nach Zeit {zone} verschoben werden.",
+  },
+  "routine.timezoneMove.failed": "Die Routinen konnten nicht verschoben werden.",
   "routine.calendar.title": "Zeitplan",
   "routine.calendar.open": "Zeitplan öffnen",
   "routine.calendar.timeZone": "Zeiten in {zone}",

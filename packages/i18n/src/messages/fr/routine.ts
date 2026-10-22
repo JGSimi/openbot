@@ -162,6 +162,24 @@ export const messages = {
   "routine.card.created": "Routine créée",
   "routine.card.updated": "Routine mise à jour",
   "routine.card.open": "Ouvrir la routine {name}",
+
+  "routine.timezoneMove.title": "Votre fuseau horaire est maintenant {zone}",
+  "routine.timezoneMove.description": {
+    one: "{count} routine sur {server} suit l’heure de {from}. La passer à {zone} ? Son heure reste la même.",
+    other:
+      "{count} routines sur {server} suivent l’heure de {from}. Les passer à {zone} ? Leurs heures restent les mêmes.",
+  },
+  "routine.timezoneMove.move": "Déplacer",
+  "routine.timezoneMove.keep": "Garder",
+  "routine.timezoneMove.moved": {
+    one: "{count} routine sur {server} passée à l’heure de {zone}.",
+    other: "{count} routines sur {server} passées à l’heure de {zone}.",
+  },
+  "routine.timezoneMove.partial": {
+    one: "{count} routine sur {server} n’a pas pu passer à l’heure de {zone}.",
+    other: "{count} routines sur {server} n’ont pas pu passer à l’heure de {zone}.",
+  },
+  "routine.timezoneMove.failed": "Impossible de déplacer les routines.",
   "routine.calendar.title": "Planning",
   "routine.calendar.open": "Ouvrir le planning",
   "routine.calendar.timeZone": "Heures en {zone}",

@@ -157,6 +157,21 @@ export const messages = {
   "routine.card.created": "ルーティンを作成しました",
   "routine.card.updated": "ルーティンを更新しました",
   "routine.card.open": "ルーティン {name} を開く",
+
+  "routine.timezoneMove.title": "タイムゾーンが {zone} に変わりました",
+  "routine.timezoneMove.description": {
+    other:
+      "{server} の {count} 件のルーティンが {from} の時刻で実行されます。{zone} に移しますか？時刻はそのままです。",
+  },
+  "routine.timezoneMove.move": "移す",
+  "routine.timezoneMove.keep": "そのまま",
+  "routine.timezoneMove.moved": {
+    other: "{server} の {count} 件のルーティンを {zone} の時刻に移しました。",
+  },
+  "routine.timezoneMove.partial": {
+    other: "{server} の {count} 件のルーティンを {zone} の時刻に移せませんでした。",
+  },
+  "routine.timezoneMove.failed": "ルーティンを移せませんでした。",
   "routine.calendar.title": "スケジュール",
   "routine.calendar.open": "スケジュールを開く",
   "routine.calendar.timeZone": "時刻は {zone} です",

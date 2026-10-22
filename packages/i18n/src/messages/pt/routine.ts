@@ -148,6 +148,23 @@ export const messages = {
   "routine.card.created": "Rotina criada",
   "routine.card.updated": "Rotina atualizada",
   "routine.card.open": "Abrir rotina {name}",
+
+  "routine.timezoneMove.title": "Seu fuso horário agora é {zone}",
+  "routine.timezoneMove.description": {
+    one: "{count} rotina em {server} usa o horário de {from}. Mover para {zone}? O horário continua o mesmo.",
+    other: "{count} rotinas em {server} usam o horário de {from}. Mover para {zone}? Os horários continuam os mesmos.",
+  },
+  "routine.timezoneMove.move": "Mover",
+  "routine.timezoneMove.keep": "Manter",
+  "routine.timezoneMove.moved": {
+    one: "{count} rotina em {server} movida para o horário de {zone}.",
+    other: "{count} rotinas em {server} movidas para o horário de {zone}.",
+  },
+  "routine.timezoneMove.partial": {
+    one: "{count} rotina em {server} não pôde ir para o horário de {zone}.",
+    other: "{count} rotinas em {server} não puderam ir para o horário de {zone}.",
+  },
+  "routine.timezoneMove.failed": "Não foi possível mover as rotinas.",
   "routine.calendar.title": "Agenda",
   "routine.calendar.open": "Abrir agenda",
   "routine.calendar.timeZone": "Horários em {zone}",

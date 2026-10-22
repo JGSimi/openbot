@@ -188,6 +188,30 @@ export const messages = {
   "routine.card.updated": "Регулярная задача обновлена",
   "routine.card.open": "Открыть регулярную задачу {name}",
 
+  "routine.timezoneMove.title": "Ваш часовой пояс теперь {zone}",
+  "routine.timezoneMove.description": {
+    one: "{count} регулярная задача на {server} идёт по времени {from}. Перенести на {zone}? Время на часах не изменится.",
+    few: "{count} регулярные задачи на {server} идут по времени {from}. Перенести на {zone}? Время на часах не изменится.",
+    many: "{count} регулярных задач на {server} идут по времени {from}. Перенести на {zone}? Время на часах не изменится.",
+    other:
+      "{count} регулярной задачи на {server} идут по времени {from}. Перенести на {zone}? Время на часах не изменится.",
+  },
+  "routine.timezoneMove.move": "Перенести",
+  "routine.timezoneMove.keep": "Оставить",
+  "routine.timezoneMove.moved": {
+    one: "{count} регулярная задача на {server} перенесена на время {zone}.",
+    few: "{count} регулярные задачи на {server} перенесены на время {zone}.",
+    many: "{count} регулярных задач на {server} перенесено на время {zone}.",
+    other: "{count} регулярной задачи на {server} перенесено на время {zone}.",
+  },
+  "routine.timezoneMove.partial": {
+    one: "Не удалось перенести {count} регулярную задачу на {server} на время {zone}.",
+    few: "Не удалось перенести {count} регулярные задачи на {server} на время {zone}.",
+    many: "Не удалось перенести {count} регулярных задач на {server} на время {zone}.",
+    other: "Не удалось перенести {count} регулярной задачи на {server} на время {zone}.",
+  },
+  "routine.timezoneMove.failed": "Не удалось перенести регулярные задачи.",
+
   "routine.calendar.title": "Расписание",
   "routine.calendar.open": "Открыть расписание",
   "routine.calendar.timeZone": "Время: {zone}",
