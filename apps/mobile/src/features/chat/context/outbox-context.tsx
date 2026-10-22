@@ -11,7 +11,7 @@ import {
 } from "react";
 import { reportMobileNotification } from "@/features/analytics/failure-reports";
 import { useMobileSession } from "@/features/auth/context/mobile-session-context";
-import { ChannelSend } from "@/features/channels/model/channel-send";
+import { ChannelHistoryRefreshError } from "@/features/channels/model/channel-store";
 import { useMobileWorkspace } from "@/features/workspace/context/mobile-workspace-context";
 import type { MobileWorkspaceContextValue } from "@/features/workspace/model/workspace-types";
 import { currentText } from "@/shared/lib/text";
@@ -129,24 +129,37 @@ async function deliverOutboxMessage(
     });
     return { messageId };
   }
-  const sender = new ChannelSend(
-    workspace.channelStore,
-    target.serverId,
-    target.channelId,
-    () => message.clientMessageId,
-  );
-  try {
-    await sender.send(
-      message.text,
-      delivery.files,
-      message.replyToMessageId,
-      // The member that the message names at its start, as the person saw the channel.
-      target.recipientAgentId ? [{ agentId: target.recipientAgentId }] : [],
+  const { channelStore } = workspace;
+  await uploadChatAttachments(delivery.files, {
+    ...control,
+    upload: (file, onProgress) => channelStore.upload(target.serverId, file, onProgress),
+    discard: (id) => channelStore.discard(target.serverId, id),
+    send: async (ids) => {
       // The host keeps the receipt of a channel operation with the channel, so a repeat is always safe.
-      { ...control, beforeCommand: () => delivery.beforeStore(true) },
-    );
-    return { messageId: null };
-  } finally {
-    sender.dispose();
-  }
+      await delivery.beforeStore(true);
+      try {
+        await channelStore.command(
+          target.serverId,
+          {
+            type: "send",
+            // The outbox id, so a repeat after a lost answer stores the message once.
+            operationId: message.clientMessageId,
+            channelId: target.channelId,
+            text: message.text,
+            // The member that the message names at its start, as the person saw the channel.
+            recipientAgentId: target.recipientAgentId,
+            replyToMessageId: message.replyToMessageId,
+            attachmentDraftIds: ids,
+          },
+          { waitForRefresh: true },
+        );
+      } catch (error) {
+        // The host stored the message. The next channel read shows it, so a failed read is not a
+        // failed send, and its drafts must not be discarded.
+        if (!(error instanceof ChannelHistoryRefreshError)) throw error;
+      }
+      return "";
+    },
+  });
+  return { messageId: null };
 }

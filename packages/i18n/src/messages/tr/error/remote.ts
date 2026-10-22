@@ -195,7 +195,6 @@ export const messages = {
   "error.remote.hostedServerRemoval": "Barındırılan bir sunucuyu silmek için Faturalandırma'yı kullanın.",
   "error.remote.channelsUnsupported": "Kanalları kullanmak için bu masaüstü sunucusunu güncelleyin.",
   "error.remote.channelDeleteUnsupported": "Kanalları silmek için bu masaüstü sunucusunu güncelleyin.",
-  "error.remote.attachmentUploadCancelled": "Ek yükleme iptal edildi.",
   "error.remote.historyRefreshFailed": "Mesaj gönderildi, ancak sohbet geçmişi yenilenemedi.",
   "error.remote.taskHistoryRefreshFailed": "Görev değiştirildi, ancak sohbet geçmişi yenilenemedi.",
 } as const satisfies PartialTranslation<typeof source>;

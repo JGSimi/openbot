@@ -30,6 +30,9 @@ import { useReducedMotion } from "@/shared/lib/motion";
 import { isAndroid, isIOS } from "@/shared/lib/platform";
 import { useText } from "@/shared/lib/text";
 
+/** How long a notification tap waits for the channel list of its server before it opens the agent chat. */
+const NOTIFICATION_CHANNEL_WAIT_MS = 8_000;
+
 export const unstable_settings = {
   initialRouteName: "connected",
 };
@@ -103,30 +106,38 @@ function AuthenticatedStack() {
   useEffect(() => setQuickActionNavigator(openQuickAction), [openQuickAction]);
   useEffect(() => setShareSheetOpener(() => whenUnlocked(() => router.push("/share"))), []);
   const workspace = useMobileWorkspaceReader();
-  /** A prompt, an approval or a takeover on a channel thread opens the channel, as on desktop. */
+  /**
+   * A prompt, an approval or a takeover on a channel thread opens the channel, as on desktop. A tap
+   * at a cold start comes before the server connects, so it waits a short time for the channel list.
+   */
   const openFromNotification = useCallback(
     ({ agentId, serverId, threadId }: NotificationTarget) => {
-      const channel =
-        serverId && threadId
-          ? workspace()
-              .channelStore.get(serverId)
-              .channels.find((item) => !item.archived && item.threads?.some((thread) => thread.threadId === threadId))
-          : undefined;
-      if (!channel || !serverId) {
+      if (!serverId || !threadId) {
         openFromOutside(agentId);
         return;
       }
-      whenUnlocked(() => {
-        closeDrawer();
-        if (router.canDismiss()) router.dismissAll();
-        navigationGate.request(
-          () => {
-            if (!navigationGate.openFromHome(channel.id))
-              router.push({ pathname: "/channel/[channelId]", params: { channelId: channel.id, serverId } });
-          },
-          () => onChatList.current,
-        );
-      });
+      void workspace()
+        .channelStore.whenListed(serverId, NOTIFICATION_CHANNEL_WAIT_MS)
+        .then((state) => {
+          const channel = state.channels.find(
+            (item) => !item.archived && item.threads?.some((thread) => thread.threadId === threadId),
+          );
+          if (!channel) {
+            openFromOutside(agentId);
+            return;
+          }
+          whenUnlocked(() => {
+            closeDrawer();
+            if (router.canDismiss()) router.dismissAll();
+            navigationGate.request(
+              () => {
+                if (!navigationGate.openFromHome(channel.id))
+                  router.push({ pathname: "/channel/[channelId]", params: { channelId: channel.id, serverId } });
+              },
+              () => onChatList.current,
+            );
+          });
+        });
     },
     [workspace, openFromOutside, closeDrawer, navigationGate],
   );

@@ -200,7 +200,6 @@ export const messages = {
   "error.remote.hostedServerRemoval": "Lösche einen gehosteten Server unter „Abrechnung“.",
   "error.remote.channelsUnsupported": "Aktualisiere diesen Desktop-Server, um Kanäle zu verwenden.",
   "error.remote.channelDeleteUnsupported": "Aktualisiere diesen Desktop-Server, um Kanäle zu löschen.",
-  "error.remote.attachmentUploadCancelled": "Anhangsupload abgebrochen.",
   "error.remote.historyRefreshFailed":
     "Die Nachricht wurde gesendet, aber der Chatverlauf konnte nicht aktualisiert werden.",
   "error.remote.taskHistoryRefreshFailed":

@@ -37,6 +37,8 @@ export interface ChannelState {
   supported: boolean;
   canDelete: boolean;
   loading: boolean;
+  /** The host list has loaded at least once. */
+  listed: boolean;
   /** The last load failure. A screen renders it in the interface language. */
   error: { cause: unknown } | null;
 }
@@ -46,6 +48,7 @@ const EMPTY: ChannelState = {
   supported: false,
   canDelete: false,
   loading: false,
+  listed: false,
   error: null,
 };
 interface Entry {
@@ -102,6 +105,25 @@ export class MobileChannelStore {
   get(serverId: string) {
     return this.entry(serverId).state;
   }
+  /**
+   * The state once the host list has loaded, or after `timeoutMs` with what the phone has. A
+   * notification tap at a cold start comes before the server connects.
+   */
+  whenListed(serverId: string, timeoutMs: number): Promise<ChannelState> {
+    const entry = this.entry(serverId);
+    if (entry.state.listed) return Promise.resolve(entry.state);
+    return new Promise((resolve) => {
+      const finish = () => {
+        clearTimeout(timer);
+        unsubscribe();
+        resolve(this.get(serverId));
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      const unsubscribe = this.subscribe(serverId, () => {
+        if (this.get(serverId).listed) finish();
+      });
+    });
+  }
   subscribe(serverId: string, listener: () => void) {
     const entry = this.entry(serverId);
     entry.listeners.add(listener);
@@ -118,6 +140,7 @@ export class MobileChannelStore {
       next.supported === entry.state.supported &&
       next.canDelete === entry.state.canDelete &&
       next.loading === entry.state.loading &&
+      next.listed === entry.state.listed &&
       next.error === entry.state.error
     )
       return;
@@ -209,6 +232,7 @@ export class MobileChannelStore {
             this.publish(entry, {
               channels: stableChannels,
               pages: pages.size === entry.state.pages.size ? entry.state.pages : pages,
+              listed: true,
             });
           };
           const read = async (id: string) => {

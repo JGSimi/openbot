@@ -196,7 +196,6 @@ export const messages = {
   "error.remote.hostedServerRemoval": "Usa Fatturazione per eliminare un server ospitato.",
   "error.remote.channelsUnsupported": "Aggiorna questo server desktop per usare i canali.",
   "error.remote.channelDeleteUnsupported": "Aggiorna questo server desktop per eliminare i canali.",
-  "error.remote.attachmentUploadCancelled": "Caricamento dell'allegato annullato.",
   "error.remote.historyRefreshFailed":
     "Il messaggio è stato inviato, ma non è stato possibile aggiornare la cronologia della chat.",
   "error.remote.taskHistoryRefreshFailed":

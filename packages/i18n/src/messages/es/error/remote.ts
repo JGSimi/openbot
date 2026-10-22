@@ -197,7 +197,6 @@ export const messages = {
   "error.remote.hostedServerRemoval": "Usa Facturación para eliminar un servidor alojado.",
   "error.remote.channelsUnsupported": "Actualiza este servidor de escritorio para usar canales.",
   "error.remote.channelDeleteUnsupported": "Actualiza este servidor de escritorio para eliminar canales.",
-  "error.remote.attachmentUploadCancelled": "Carga del archivo adjunto cancelada.",
   "error.remote.historyRefreshFailed": "El mensaje se envió, pero no se pudo actualizar el historial del chat.",
   "error.remote.taskHistoryRefreshFailed": "La tarea se cambió, pero no se pudo actualizar el historial del chat.",
 } as const satisfies PartialTranslation<typeof source>;

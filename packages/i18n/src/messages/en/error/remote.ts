@@ -193,7 +193,6 @@ export const messages = defineMessages("error.remote", {
   "error.remote.hostedServerRemoval": "Use Billing to delete a hosted server.",
   "error.remote.channelsUnsupported": "Update this desktop server to use channels.",
   "error.remote.channelDeleteUnsupported": "Update this desktop server to delete channels.",
-  "error.remote.attachmentUploadCancelled": "Attachment upload cancelled.",
   "error.remote.historyRefreshFailed": "The message was sent, but chat history could not refresh.",
   "error.remote.taskHistoryRefreshFailed": "The task was changed, but chat history could not refresh.",
 });

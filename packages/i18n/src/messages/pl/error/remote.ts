@@ -193,7 +193,6 @@ export const messages = {
   "error.remote.hostedServerRemoval": "Użyj sekcji Rozliczenia, aby usunąć hostowany serwer.",
   "error.remote.channelsUnsupported": "Zaktualizuj ten serwer desktopowy, aby używać kanałów.",
   "error.remote.channelDeleteUnsupported": "Zaktualizuj ten serwer desktopowy, aby usuwać kanały.",
-  "error.remote.attachmentUploadCancelled": "Przesyłanie załącznika anulowane.",
   "error.remote.historyRefreshFailed": "Wiadomość została wysłana, ale nie udało się odświeżyć historii czatu.",
   "error.remote.taskHistoryRefreshFailed": "Zadanie zostało zmienione, ale nie udało się odświeżyć historii czatu.",
 } as const satisfies PartialTranslation<typeof source>;
