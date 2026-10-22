@@ -27,6 +27,11 @@ const mixedRows = accountUsageProviderRows({
       primary: null,
       secondary: { usedPercent: 22, windowDurationMins: 10_080, resetsAt: weeklyReset },
     },
+    {
+      id: "antigravity",
+      primary: null,
+      secondary: { usedPercent: 4, windowDurationMins: 10_080, resetsAt: weeklyReset },
+    },
   ],
 });
 
