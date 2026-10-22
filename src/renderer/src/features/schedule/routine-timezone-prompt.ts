@@ -6,6 +6,7 @@ import type {
   RoutineCalendarRoutine,
   ServerSummary,
 } from "@openbot/contracts/ipc";
+import { routineOnceInstant } from "@openbot/team-client/routine-schedule";
 import { toast } from "@openbot/ui";
 import { currentText } from "@openbot/ui/text";
 import { createEffect, onCleanup, untrack } from "solid-js";
@@ -67,9 +68,14 @@ function writeAnswer(serverId: string, zone: string, from: string): void {
   }
 }
 
-/** An interval routine counts from its anchor instant, so its zone does not move its runs. */
-function followsClock(routine: RoutineCalendarRoutine): boolean {
-  return routine.schedule.kind !== "interval";
+/**
+ * Whether a move changes when the routine runs. An interval routine counts from its anchor instant. A
+ * one-time routine whose time passed keeps that time as the record of its run.
+ */
+function followsClock(routine: RoutineCalendarRoutine, now: Date): boolean {
+  const { schedule } = routine;
+  if (schedule.kind === "interval") return false;
+  return schedule.kind !== "once" || routineOnceInstant(schedule, routine.timezone) > now;
 }
 
 function eventOwner(owner: RoutineCalendarOwner): EventRoutineOwner {
@@ -86,8 +92,9 @@ async function routinesByZone(target: RoutineZoneTarget): Promise<Map<string, Ro
     to: new Date(from.getTime() + 60_000).toISOString(),
   });
   const byZone = new Map<string, RoutineCalendarRoutine[]>();
+  const now = new Date();
   for (const routine of calendar.routines) {
-    if (!followsClock(routine)) continue;
+    if (!followsClock(routine, now)) continue;
     byZone.set(routine.timezone, [...(byZone.get(routine.timezone) ?? []), routine]);
   }
   return byZone;
