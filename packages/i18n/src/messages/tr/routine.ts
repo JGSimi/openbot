@@ -178,6 +178,7 @@ export const messages = {
     other: "{server} üzerindeki {count} rutin {zone} saatine taşınamadı.",
   },
   "routine.timezoneMove.failed": "Rutinler taşınamadı.",
+  "routine.timezoneMove.settingFailed": "{server} sunucu ayarlarındaki saat dilimi değiştirilemedi.",
 
   "routine.calendar.title": "Rutinler",
   "routine.calendar.open": "Rutinleri aç",

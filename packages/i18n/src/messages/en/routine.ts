@@ -176,6 +176,7 @@ export const messages = defineMessages("routine", {
     other: "{count} routines on {server} could not move to {zone} time.",
   },
   "routine.timezoneMove.failed": "Could not move the routines.",
+  "routine.timezoneMove.settingFailed": "Could not change the Server Settings time zone of {server}.",
 
   "routine.calendar.title": "Schedule",
   "routine.calendar.open": "Open schedule",

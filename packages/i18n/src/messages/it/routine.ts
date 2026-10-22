@@ -177,6 +177,7 @@ export const messages = {
     other: "Impossibile spostare {count} routine su {server} sull’ora di {zone}.",
   },
   "routine.timezoneMove.failed": "Impossibile spostare le routine.",
+  "routine.timezoneMove.settingFailed": "Impossibile cambiare il fuso orario nelle impostazioni del server {server}.",
 
   "routine.calendar.title": "Pianificazione",
   "routine.calendar.open": "Apri la pianificazione",

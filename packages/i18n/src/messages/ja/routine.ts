@@ -172,6 +172,7 @@ export const messages = {
     other: "{server} の {count} 件のルーティンを {zone} の時刻に移せませんでした。",
   },
   "routine.timezoneMove.failed": "ルーティンを移せませんでした。",
+  "routine.timezoneMove.settingFailed": "{server} のサーバー設定のタイムゾーンを変更できませんでした。",
   "routine.calendar.title": "スケジュール",
   "routine.calendar.open": "スケジュールを開く",
   "routine.calendar.timeZone": "時刻は {zone} です",

@@ -211,6 +211,7 @@ export const messages = {
     other: "Не удалось перенести {count} регулярной задачи на {server} на время {zone}.",
   },
   "routine.timezoneMove.failed": "Не удалось перенести регулярные задачи.",
+  "routine.timezoneMove.settingFailed": "Не удалось изменить часовой пояс в настройках сервера {server}.",
 
   "routine.calendar.title": "Расписание",
   "routine.calendar.open": "Открыть расписание",

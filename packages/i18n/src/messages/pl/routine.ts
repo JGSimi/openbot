@@ -210,6 +210,7 @@ export const messages = {
     other: "Nie udało się przenieść {count} rutyny na {server} na czas {zone}.",
   },
   "routine.timezoneMove.failed": "Nie udało się przenieść rutyn.",
+  "routine.timezoneMove.settingFailed": "Nie udało się zmienić strefy czasowej w ustawieniach serwera {server}.",
 
   "routine.calendar.title": "Harmonogram",
   "routine.calendar.open": "Otwórz harmonogram",

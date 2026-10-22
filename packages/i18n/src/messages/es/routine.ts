@@ -177,6 +177,7 @@ export const messages = {
     other: "{count} rutinas en {server} no se pudieron mover a la hora de {zone}.",
   },
   "routine.timezoneMove.failed": "No se pudieron mover las rutinas.",
+  "routine.timezoneMove.settingFailed": "No se pudo cambiar la zona horaria de la configuración del servidor {server}.",
   "routine.calendar.title": "Programación",
   "routine.calendar.open": "Abrir programación",
   "routine.calendar.timeZone": "Horas en {zone}",

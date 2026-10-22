@@ -178,6 +178,8 @@ export const messages = {
     other: "{count} Routinen auf {server} konnten nicht nach Zeit {zone} verschoben werden.",
   },
   "routine.timezoneMove.failed": "Die Routinen konnten nicht verschoben werden.",
+  "routine.timezoneMove.settingFailed":
+    "Die Zeitzone in den Servereinstellungen von {server} konnte nicht geändert werden.",
   "routine.calendar.title": "Zeitplan",
   "routine.calendar.open": "Zeitplan öffnen",
   "routine.calendar.timeZone": "Zeiten in {zone}",

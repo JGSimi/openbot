@@ -132,11 +132,16 @@ async function moveRoutines(target: RoutineZoneTarget, from: string, to: string)
       }
     }
   }
+  let settingFailed = false;
   if (target.timezone && moved > 0) {
-    const setting = await target.timezone.getTimezone(target.id);
-    if (setting.timezone === from) await target.timezone.setTimezone(to, target.id);
+    try {
+      const setting = await target.timezone.getTimezone(target.id);
+      if (setting.timezone === from) await target.timezone.setTimezone(to, target.id);
+    } catch {
+      settingFailed = true;
+    }
   }
-  return { moved, failed };
+  return { moved, failed, settingFailed };
 }
 
 /**
@@ -150,6 +155,8 @@ export function createRoutineTimezonePrompt(targets: () => RoutineZoneTarget[]):
   const moving = new Set<string>();
   /** The source and device zone of the toast that shows for each server. */
   const shown = new Map<string, string>();
+  /** For each server, the source and device zones of toasts closed with no answer until the zone changes. */
+  const dismissed = new Map<string, Set<string>>();
 
   async function check(target: RoutineZoneTarget): Promise<void> {
     if (checking.has(target.id) || moving.has(target.id)) return;
@@ -158,7 +165,10 @@ export function createRoutineTimezonePrompt(targets: () => RoutineZoneTarget[]):
       const zone = deviceZone();
       const answered = answeredZones(target.id, zone);
       const next = [...(await routinesByZone(target)).entries()]
-        .filter(([source]) => source !== zone && !answered.includes(source))
+        .filter(
+          ([source]) =>
+            source !== zone && !answered.includes(source) && !dismissed.get(target.id)?.has(`${source}>${zone}`),
+        )
         .sort((a, b) => b[1].length - a[1].length)[0];
       const key = next ? `${next[0]}>${zone}` : undefined;
       if (key === shown.get(target.id)) return;
@@ -167,7 +177,8 @@ export function createRoutineTimezonePrompt(targets: () => RoutineZoneTarget[]):
         toast.dismiss(toastId(target.id));
         return;
       }
-      shown.set(target.id, `${next[0]}>${zone}`);
+      const shownKey = `${next[0]}>${zone}`;
+      shown.set(target.id, shownKey);
       const [source, routines] = next;
       const { t } = currentText();
       const answer = (move: boolean) => {
@@ -189,7 +200,12 @@ export function createRoutineTimezonePrompt(targets: () => RoutineZoneTarget[]):
         }),
         // A toast closed without an answer comes back after the next start or zone change.
         duration: Number.POSITIVE_INFINITY,
-        onDismiss: () => shown.delete(target.id),
+        // The code removes `shown` before it closes a toast, so this is a close by the user.
+        onDismiss: () => {
+          if (shown.get(target.id) !== shownKey) return;
+          shown.delete(target.id);
+          dismissed.set(target.id, new Set([...(dismissed.get(target.id) ?? []), shownKey]));
+        },
         action: { label: t("routine.timezoneMove.move"), onClick: () => answer(true) },
         cancel: { label: t("routine.timezoneMove.keep"), onClick: () => answer(false) },
       });
@@ -205,8 +221,9 @@ export function createRoutineTimezonePrompt(targets: () => RoutineZoneTarget[]):
     const text = currentText();
     moving.add(target.id);
     try {
-      const { moved, failed } = await moveRoutines(target, from, to);
+      const { moved, failed, settingFailed } = await moveRoutines(target, from, to);
       writeAnswer(target.id, to, from);
+      if (settingFailed) actionToast.warning(text.t("routine.timezoneMove.settingFailed", { server: target.name }));
       if (failed > 0) {
         actionToast.warning(
           text.t("routine.timezoneMove.partial", { count: failed, server: target.name, zone: zoneLabel(to) }),
@@ -228,7 +245,9 @@ export function createRoutineTimezonePrompt(targets: () => RoutineZoneTarget[]):
   let checkedZone = deviceZone();
 
   function checkAll(): void {
-    checkedZone = deviceZone();
+    const zone = deviceZone();
+    if (zone !== checkedZone) dismissed.clear();
+    checkedZone = zone;
     const current = untrack(targets);
     for (const serverId of shown.keys()) {
       if (current.some((target) => target.id === serverId)) continue;
