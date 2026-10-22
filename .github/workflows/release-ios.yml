@@ -104,3 +104,4 @@ jobs:
             echo 'Apple must process the build before it is available in TestFlight.'
             echo 'Manage tester groups in App Store Connect. This workflow does not publish to the App Store.'
           } >> "$GITHUB_STEP_SUMMARY"
+

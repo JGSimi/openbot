@@ -66,3 +66,4 @@ jobs:
 
       - name: Install and verify the pinned driver
         run: bun scripts/install-cua-driver.ts ${{ matrix.platform }} ${{ matrix.architecture }}
+

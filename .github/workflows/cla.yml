@@ -50,3 +50,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         run: bun scripts/cla.ts pr "$PR_NUMBER"
+
