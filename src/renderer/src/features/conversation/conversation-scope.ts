@@ -8,6 +8,7 @@ import {
 import type { McpSignInRelayPage, UpdateAgentInput } from "@openbot/contracts/ipc";
 import type { QuoteRequest } from "@openbot/ui/features/conversation/ComposerEditor";
 import { currentText } from "@openbot/ui/text";
+import { usesTouchLayout } from "@openbot/ui/utils";
 import { errorReference } from "@openbot/user-errors";
 import {
   createContext,
@@ -24,14 +25,20 @@ import { createAttachmentImportSounds } from "./attachment-import-sounds";
 import { useConversationController } from "./conversation-controller-context";
 import { agentConversationKey, composerDraftKey } from "./conversation-keys";
 import { conversationRuntime } from "./conversation-runtime";
-import type { ComposerDraft, ConversationProps, ConversationTarget, SidePanelPane } from "./conversation-types";
+import type {
+  AgentSettingsRequest,
+  ComposerDraft,
+  ConversationProps,
+  ConversationTarget,
+  SidePanelPane,
+} from "./conversation-types";
 import {
   clearQuotedTextHighlight,
-  filePreviewQuoteId,
   highlightQuotedText,
   messageTextBlocks,
   revealFileQuote,
   stopRevealingFileQuote,
+  workspaceAgentOfPath,
 } from "./quoted-text";
 import { createActivityStore } from "./stores/activity-store";
 import { createBrowserStore } from "./stores/browser-store";
@@ -50,10 +57,15 @@ import { createSideQuestionStore } from "./stores/side-question-store";
 import { createSkillsStore } from "./stores/skills-store";
 import { createVoiceConversation } from "./stores/voice-conversation-store";
 import { createVoiceStore } from "./stores/voice-store";
-import { voiceSupported } from "./voice-status";
 
 /** A keyboard or wheel scroll moves the chat within a few frames of its input. */
 const READER_INPUT_WINDOW_MS = 250;
+
+/**
+ * Settings requests that a chat has already opened. The request stays set after it is handled, and the
+ * chat mounts again when the user comes back from another page; it must not open a new routine again.
+ */
+const handledSettingsRequests = new WeakSet<AgentSettingsRequest>();
 
 function followConversationBottom(element: HTMLDivElement): void {
   element.scrollTop = element.scrollHeight - element.clientHeight;
@@ -100,6 +112,7 @@ export function createConversationViewScope(props: ConversationProps) {
     setComposerErrorReferences,
     conversationErrors,
     setConversationErrors,
+    conversationErrorRuns,
     voicePhase,
     setVoicePhase,
     voiceModelProgress,
@@ -110,6 +123,8 @@ export function createConversationViewScope(props: ConversationProps) {
     setVoiceLiveTranscript,
     voiceLevels,
     setVoiceLevels,
+    voiceLimitReached,
+    setVoiceLimitReached,
     markingRead,
     setMarkingRead,
     submitting,
@@ -252,6 +267,8 @@ export function createConversationViewScope(props: ConversationProps) {
     openWorkspaceFile,
     openWorkspaceFolder,
     openWorkspaceFolderEntry,
+    previewQuoteId,
+    previewWorkspaceAgentId,
     sidebarFileBack,
     openSidebarFileBack,
     openSidebarFileExternally,
@@ -317,6 +334,14 @@ export function createConversationViewScope(props: ConversationProps) {
     const entry = composerErrorReferences()[composerDraftKey(target)];
     return entry?.message === message ? entry.reference : null;
   });
+  /** The provider and model of the run behind the shown error. A later error of another run shows none. */
+  const currentChatErrorRun = createMemo(() => {
+    const target = currentTarget();
+    const message = currentChatError();
+    if (!target || !message) return null;
+    const entry = conversationErrorRuns()[composerDraftKey(target)];
+    return entry?.message === message ? entry.run : null;
+  });
   const queue = createQueueStore({ props, hiddenAwaitingReplyIds });
   const { activeDeliveries, orderedQueuedDeliveries, presentedQueueDeliveries, queuePanelVisible } = queue;
   const awaitingReplies = channel
@@ -366,6 +391,7 @@ export function createConversationViewScope(props: ConversationProps) {
     browserTakeoverResolution,
     respondToBrowserTakeover,
     openBrowserTakeoverTab,
+    localSignIn,
     activeBrowserControl,
     actingBrowserControl,
     browserControlAgent,
@@ -529,6 +555,11 @@ export function createConversationViewScope(props: ConversationProps) {
     clearConversationError,
     setConversationError,
     viewIsMounted,
+    // A recording in one conversation does not end the notice of another.
+    setVoiceLimitReached: (target, reached) =>
+      setVoiceLimitReached((current) =>
+        reached ? target : current?.agentId === target.agentId && current.serverId === target.serverId ? null : current,
+      ),
     hooks: {
       saveEdit: (...args) => actions.saveQueuedMessageEdit(...args),
       submit: (...args) => actions.submitMessage(...args),
@@ -543,6 +574,20 @@ export function createConversationViewScope(props: ConversationProps) {
       ? live.text
       : "";
   };
+  const voiceLimitNotice = () => {
+    const reached = voiceLimitReached();
+    return Boolean(
+      reached && reached.agentId === conversationOwnerId(props) && reached.serverId === (props.server?.id ?? "local"),
+    );
+  };
+  const dismissVoiceLimitNotice = () => setVoiceLimitReached(null);
+  // The notice explains the text in the message box, so it ends when that text is sent or cleared.
+  createEffect(
+    () => voiceLimitNotice() && !currentDraft().text.trim(),
+    (emptied) => {
+      if (emptied) dismissVoiceLimitNotice();
+    },
+  );
   const actions = createComposerActions({
     props,
     attachmentBusy,
@@ -664,7 +709,7 @@ export function createConversationViewScope(props: ConversationProps) {
     setComposerError: setScopedComposerError,
     setComposerFocusRequest,
   });
-  const { replyToMessage, reactToMessage, copyMessage, removeAttachment } = messageActions;
+  const { replyToMessage, addPageText, setPageContext, reactToMessage, copyMessage, removeAttachment } = messageActions;
   const settings = createSettingsStore({
     props,
     runtimeSettingsAttempts: resources.runtimeSettingsAttempts,
@@ -715,7 +760,6 @@ export function createConversationViewScope(props: ConversationProps) {
   let stickToLatest = true;
   let lastConversationIdentity: string | undefined;
   let lastPanelAgentId: string | undefined;
-  let lastHandledSettingsRequestNonce: number | undefined;
   let lastHandledMessageFocusNonce: number | undefined;
   const [quoteRequest, setQuoteRequest] = createSignal<QuoteRequest | undefined>(undefined);
   let lastRuntimeSettingsSignature: string | undefined;
@@ -964,8 +1008,7 @@ export function createConversationViewScope(props: ConversationProps) {
     stopRevealingFileQuote();
     const file = fileQuoteTarget(messageId);
     if (file) {
-      const shown =
-        filePreviewOpen() && filePreviewQuoteId(sidebarFilePreview()) === fileQuoteId({ ...file, lines: undefined });
+      const shown = filePreviewOpen() && previewQuoteId() === fileQuoteId({ ...file, lines: undefined });
       if (shown || openQuotedFile(file)) revealFileQuote(document, file, text);
       return;
     }
@@ -976,7 +1019,13 @@ export function createConversationViewScope(props: ConversationProps) {
   function openQuotedFile(file: FileQuoteTarget): boolean {
     if (file.source !== "attachment") {
       if (file.source === "shared") openSharedFile(file.path);
-      else openWorkspaceFile(file.path);
+      // A channel quote names an absolute path, so its workspace gives the agent.
+      else
+        openWorkspaceFile(
+          file.path,
+          undefined,
+          props.channel ? workspaceAgentOfPath(props.agents, file.path) : undefined,
+        );
       return true;
     }
     const attachment = props.messages
@@ -1196,9 +1245,17 @@ export function createConversationViewScope(props: ConversationProps) {
       return { agentId, panel: agentId ? rightPanels()[agentId] : undefined, request: props.settingsRequest };
     },
     ({ agentId, panel, request }) => {
-      if (agentId !== lastPanelAgentId) resetPanelsForAgent(agentId, panel);
-      if (!request || agentId !== request.agentId || request.nonce === lastHandledSettingsRequestNonce) return;
-      lastHandledSettingsRequestNonce = request.nonce;
+      const settingsRequested =
+        request !== null && agentId === request.agentId && !handledSettingsRequests.has(request);
+      if (agentId !== lastPanelAgentId) {
+        resetPanelsForAgent(agentId, panel);
+        // The user can type to the agent they opened. Edit agent leaves the focus where it is, and a touch
+        // screen does not open its keyboard over the transcript.
+        if (agentId && !channel && !settingsRequested && !usesTouchLayout())
+          setComposerFocusRequest((value) => value + 1);
+      }
+      if (!request || !settingsRequested) return;
+      handledSettingsRequests.add(request);
       if (request.routine) openRoutineSettings(request.routine);
       else setActiveRightPanel("settings", agentId);
     },
@@ -1508,7 +1565,7 @@ export function createConversationViewScope(props: ConversationProps) {
    * A voice conversation hears and speaks on this computer, so it needs its speech models. A remote
    * server gets the text only.
    */
-  const voiceConversationAvailable = () => !channel && !props.runtime && voiceSupported(props.platform);
+  const voiceConversationAvailable = () => !channel && !props.runtime;
   /** Starts a voice conversation with an agent. It ends with the owner that calls this. */
   const startVoiceConversation = (agentId: string) =>
     createVoiceConversation({
@@ -1549,6 +1606,7 @@ export function createConversationViewScope(props: ConversationProps) {
     browserTakeoverTab,
     respondToBrowserTakeover,
     openBrowserTakeoverTab,
+    localSignIn,
     activeChatSearchIndex,
     agentActivity,
     runningTurnRuntime,
@@ -1582,6 +1640,7 @@ export function createConversationViewScope(props: ConversationProps) {
     currentComposerError,
     currentChatError,
     currentChatErrorReference,
+    currentChatErrorRun,
     currentChatConversationKey,
     dismissCurrentChatErrors,
     dismissAwaitingReplies,
@@ -1655,6 +1714,8 @@ export function createConversationViewScope(props: ConversationProps) {
     openWorkspaceFile,
     openWorkspaceFolder,
     openWorkspaceFolderEntry,
+    previewQuoteId,
+    previewWorkspaceAgentId,
     sidebarFileBack,
     openSidebarFileBack,
     awaitingReplies,
@@ -1676,6 +1737,8 @@ export function createConversationViewScope(props: ConversationProps) {
     reorderPresentedQueue,
     replyTarget,
     replyToMessage,
+    addPageText,
+    setPageContext,
     skillSettingsRequest,
     openSkillSettings,
     routineSettingsRequest,
@@ -1726,6 +1789,8 @@ export function createConversationViewScope(props: ConversationProps) {
     updateUnreadDividerVisibility,
     voiceElapsedSeconds,
     voiceLevels,
+    voiceLimitNotice,
+    dismissVoiceLimitNotice,
     voiceLiveText,
     voicePhase,
     voiceModelProgress,

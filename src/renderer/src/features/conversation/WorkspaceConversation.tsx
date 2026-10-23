@@ -9,6 +9,7 @@ import {
   type UpdateAgentAdminSettingsInput,
   type UpdateAgentInput,
 } from "@openbot/contracts/ipc";
+import { BROWSER_PROFILES_CAPABILITY } from "@openbot/contracts/team-protocol/browser-profiles-v1";
 import { taskApproval } from "@openbot/team-client/agent-tasks";
 import { hasVisibleToasts } from "@openbot/ui";
 import {
@@ -38,7 +39,7 @@ import { useConnectors } from "../connectors/connectors-context";
 import { useCustomAgents } from "../custom-agents/custom-agents-context";
 import { useCustomProviders } from "../custom-providers/custom-providers-context";
 import { useRemoteDesktop } from "../remote-desktop/remote-desktop-context";
-import { remoteMcpSignIn, serverSupportsCapability } from "../servers/server-capabilities";
+import { remoteMcpSignIn, serverCanAdminister, serverSupportsCapability } from "../servers/server-capabilities";
 import { useServerScope } from "../servers/server-scope";
 import { useServerSettings } from "../servers/server-settings";
 import { useServers } from "../servers/servers-context";
@@ -128,6 +129,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     approvalOfThread,
     activeTurns,
     turnProgress,
+    turnStepLines,
     answerPrompt,
     respondToApproval,
     respondToApprovalRequest,
@@ -237,6 +239,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     const automation = remoteAgentAdmin.automation();
     const backupModels = remoteAgentAdmin.backupModels();
     const usageLimitReturn = remoteAgentAdmin.usageLimitReturn();
+    const taskLimit = remoteAgentAdmin.taskLimit();
     return agent
       ? {
           ...agent,
@@ -244,6 +247,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
           ...(activeServer()?.kind === "remote" && automation !== undefined ? { allowAutomation: automation } : {}),
           ...(activeServer()?.kind === "remote" && backupModels ? { backupModels } : {}),
           ...(activeServer()?.kind === "remote" && usageLimitReturn ? { usageLimitReturn } : {}),
+          ...(activeServer()?.kind === "remote" && typeof taskLimit === "number" ? { taskLimit } : {}),
         }
       : agent;
   });
@@ -320,6 +324,12 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
   const openProviderSettings = (trigger: HTMLElement) => {
     const server = activeServer();
     if (server) openServerSettings(server.id, trigger, "providers");
+  };
+  /** The named browser profiles live on the computer that runs the agents: this one, or a host an admin manages. */
+  const manageBrowserProfiles = createMemo(() => serverCanAdminister(activeServer(), BROWSER_PROFILES_CAPABILITY));
+  const openBrowserProfileSettings = (trigger: HTMLElement) => {
+    const server = activeServer();
+    if (server) openServerSettings(server.id, trigger, "browser-profiles");
   };
   /** The browser sign-in opens on this computer, so it stays local. */
   const localProviderDownloads = createMemo(
@@ -471,6 +481,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         onSignInProvider={composerSignIn() ? connectFromComposer : undefined}
         onSignInWithCodeProvider={composerCodeSignIn() ? signInWithCode : undefined}
         onManageProviders={manageProviders() ? openProviderSettings : undefined}
+        onManageBrowserProfiles={manageBrowserProfiles() ? openBrowserProfileSettings : undefined}
         agent={conversationAgent()}
         agents={agentList()}
         mentionAgents={agentList().filter((agent) => !userHiddenAgentIds().has(agent.id))}
@@ -523,6 +534,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         browserTakeover={activeBrowserTakeover()}
         activeTurnId={activeAgent() ? activeTurns()[activeAgent()?.id ?? ""] : null}
         activityDetail={activeAgent() ? turnProgress()[activeAgent()?.id ?? ""]?.detail : undefined}
+        turnStepLines={turnStepLines()}
         skillsMarketplaceOpen={skillsMarketplaceOpen()}
         mcpSettingsOpen={serverSettingsOpen() || skillsMarketplaceOpen()}
         globalOverlayOpen={
@@ -557,6 +569,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         onAlwaysAllowApproval={alwaysAllowApproval()}
         agentAutoApproves={activeAgentAutoApproves()}
         remoteBackupModelsLoaded={remoteAgentAdmin.backupModels() !== undefined}
+        remoteTaskLimitLoaded={remoteAgentAdmin.taskLimit() !== undefined}
         onUpdateAgentPermissions={permissionsEditable() ? writeAgentPermissions : undefined}
         defaultBusyMessageMode={generalSettings().busyMessageMode}
         agentMemoryLimit={generalSettings().agentMemoryLimit}

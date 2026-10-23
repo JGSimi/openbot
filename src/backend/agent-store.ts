@@ -47,6 +47,7 @@ import {
   isAgentUsageLimitReturn,
   isAvatarHue,
   isAvatarSeed,
+  isBrowserProfileId,
   isBusyMessageMode,
   isHiddenAt,
   isProviderAccountId,
@@ -85,6 +86,11 @@ type PersistedStoredAgent = Omit<StoredAgent, "avatarUrl" | "provider" | "access
   allowNewChat?: boolean;
   // Absent on every agent stored before the setting existed, which keeps the acknowledgement off.
   quickAcknowledgement?: boolean;
+  // Absent on every agent stored before the setting existed, which keeps its tabs in the shared browser session.
+  ownBrowserSession?: boolean;
+  // Absent on every agent stored before named browser profiles existed. Stored with
+  // `ownBrowserSession: true`, so an older OpenBot opens the agent's own session instead.
+  browserProfileId?: string;
   // Absent on every agent stored before the setting existed, which leaves the service tier to Codex.
   fastMode?: boolean;
   // Absent means the app default, as for every agent stored before the setting existed.
@@ -136,12 +142,12 @@ const LEGACY_AVATAR_COLORS = [
 const NEW_AGENT_PREVIEW = "No messages yet";
 /** The longest agent preview the store keeps; a longer text is cut to it. */
 export const AGENT_PREVIEW_MAX_LENGTH = 180;
-export const DEFAULT_AGENT_MODEL: AgentModelId = "gpt-6-luna";
+const DEFAULT_AGENT_MODEL: AgentModelId = "gpt-6-luna";
 export const DEFAULT_AGENT_PROVIDER: AgentProviderId = "codex";
 // A provider CLI reports the effort its own configuration uses -- Codex says `medium` for every
 // GPT-5.6 model -- which is not the one this product leads with: a new agent starts on the fast
 // model, where the extra thinking buys little and costs a visible wait on every turn.
-export const DEFAULT_REASONING_EFFORT: AgentReasoningEffort = "low";
+const DEFAULT_REASONING_EFFORT: AgentReasoningEffort = "low";
 
 // These three strings are history, not vocabulary. The first is the file a release before the move to
 // SQLite wrote its state into, and is only ever read: renaming it means that file is never found and the
@@ -641,6 +647,10 @@ export class AgentStore {
     input: UpdateAgentInput & {
       /** The model to go back to after a usage limit. `null` removes it. */
       usageLimitReturn?: AgentUsageLimitReturn | null;
+      /** The shared or the agent's own session. It replaces a named profile. */
+      ownBrowserSession?: boolean;
+      /** The named browser profile. `null` removes it. The caller checks that the profile exists. */
+      browserProfileId?: string | null;
     },
     initiatingAgentId?: string,
   ): Effect.fn.Return<AgentSummary, StoredStateFailure> {
@@ -693,6 +703,18 @@ export class AgentStore {
       if (input.quickAcknowledgement !== undefined) {
         if (!isBoolean(input.quickAcknowledgement)) throw new Error("Invalid quick acknowledgement value.");
         next.quickAcknowledgement = input.quickAcknowledgement;
+      }
+      if (input.ownBrowserSession !== undefined) {
+        if (!isBoolean(input.ownBrowserSession)) throw new Error("Invalid browser session value.");
+        next.ownBrowserSession = input.ownBrowserSession;
+        // A choice of the shared or the agent's own session replaces a named profile.
+        delete next.browserProfileId;
+      }
+      if (input.browserProfileId === null) delete next.browserProfileId;
+      else if (input.browserProfileId !== undefined) {
+        if (!isBrowserProfileId(input.browserProfileId)) throw new Error("Invalid browser profile.");
+        next.browserProfileId = input.browserProfileId;
+        next.ownBrowserSession = true;
       }
       if (input.fastMode !== undefined) {
         if (!isBoolean(input.fastMode)) throw new Error("Invalid fast mode value.");
@@ -768,6 +790,7 @@ export class AgentStore {
       if (next.providerAccountId === undefined) delete agent.providerAccountId;
       if (next.backupModels === undefined) delete agent.backupModels;
       if (next.usageLimitReturn === undefined) delete agent.usageLimitReturn;
+      if (next.browserProfileId === undefined) delete agent.browserProfileId;
       try {
         this.#persist(modelChange ? "agent.model-changed" : "agent.updated", modelChange);
       } catch (error) {
@@ -777,6 +800,7 @@ export class AgentStore {
         if (previous.providerAccountId === undefined) delete agent.providerAccountId;
         if (previous.backupModels === undefined) delete agent.backupModels;
         if (previous.usageLimitReturn === undefined) delete agent.usageLimitReturn;
+        if (previous.browserProfileId === undefined) delete agent.browserProfileId;
         throw error;
       }
       return { ...agent };
@@ -1782,6 +1806,8 @@ function isStoredAgent(value: unknown): value is PersistedStoredAgent {
     (record.allowAutomation === undefined || isBoolean(record.allowAutomation)) &&
     (record.allowNewChat === undefined || isBoolean(record.allowNewChat)) &&
     (record.quickAcknowledgement === undefined || isBoolean(record.quickAcknowledgement)) &&
+    (record.ownBrowserSession === undefined || isBoolean(record.ownBrowserSession)) &&
+    (record.browserProfileId === undefined || isBrowserProfileId(record.browserProfileId)) &&
     (record.fastMode === undefined || isBoolean(record.fastMode)) &&
     (record.busyMessageMode === undefined || isBusyMessageMode(record.busyMessageMode)) &&
     (record.taskLimit === undefined || isAgentTaskLimit(record.taskLimit)) &&
@@ -1855,6 +1881,16 @@ function readStoredAgent(value: unknown): ReadStoredAgent | UnreadableStoredAgen
     value.quickAcknowledgement === undefined || isBoolean(value.quickAcknowledgement)
       ? value.quickAcknowledgement
       : reset("quickAcknowledgement", undefined);
+  const ownBrowserSession =
+    value.ownBrowserSession === undefined || isBoolean(value.ownBrowserSession)
+      ? value.ownBrowserSession
+      : reset("ownBrowserSession", undefined);
+  // An id this build cannot read leaves `ownBrowserSession`, which a profile always sets: the tabs
+  // then use the agent's own session, never the shared one.
+  const browserProfileId =
+    value.browserProfileId === undefined || isBrowserProfileId(value.browserProfileId)
+      ? value.browserProfileId
+      : reset("browserProfileId", undefined);
   const fastMode =
     value.fastMode === undefined || isBoolean(value.fastMode) ? value.fastMode : reset("fastMode", undefined);
   const busyMessageMode =
@@ -1925,6 +1961,8 @@ function readStoredAgent(value: unknown): ReadStoredAgent | UnreadableStoredAgen
     ...(allowAutomation === undefined ? {} : { allowAutomation }),
     ...(allowNewChat === undefined ? {} : { allowNewChat }),
     ...(quickAcknowledgement === undefined ? {} : { quickAcknowledgement }),
+    ...(ownBrowserSession === undefined ? {} : { ownBrowserSession }),
+    ...(browserProfileId === undefined ? {} : { browserProfileId }),
     ...(fastMode === undefined ? {} : { fastMode }),
     ...(busyMessageMode === undefined ? {} : { busyMessageMode }),
     ...(taskLimit === undefined ? {} : { taskLimit }),

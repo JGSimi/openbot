@@ -1,10 +1,12 @@
 import { chatVisualReply } from "@openbot/contracts/chat-visual";
-import type { ConversationMessageSender } from "@openbot/contracts/ipc";
+import type { ConversationMessageSender, MessageReaction } from "@openbot/contracts/ipc";
 import type { ConversationUiBlock } from "@openbot/contracts/ui-blocks";
 import { Button } from "@openbot/ui";
 import type { AgentMessage, ChatActionMarkerModel } from "@openbot/ui/data";
 import { ChannelActivityIndicator } from "@openbot/ui/features/channels/ChannelActivityIndicator";
 import { AgentActivityIndicator } from "@openbot/ui/features/conversation/AgentActivity";
+import { AgentChatEmptyState } from "@openbot/ui/features/conversation/AgentChatEmptyState";
+import { AgentStepsDisclosure } from "@openbot/ui/features/conversation/AgentSteps";
 import { AgentTaskChips } from "@openbot/ui/features/conversation/AgentTasks";
 import { AttachmentCards } from "@openbot/ui/features/conversation/AttachmentCards";
 import { UsageLimitAskCard } from "@openbot/ui/features/conversation/BackupModels";
@@ -18,7 +20,7 @@ import { ContextCompactionMarker, type ContextCompactionView } from "@openbot/ui
 import { BrowserTakeoverCard } from "@openbot/ui/features/conversation/ConversationPrompts";
 import { dayMarkerLabel } from "@openbot/ui/features/conversation/chat-day-markers";
 import { ReplyReturnButton, ScrollToLatestButton } from "@openbot/ui/features/conversation/MessageNavigation";
-import { MessageActions } from "@openbot/ui/features/conversation/MessageRendering";
+import { MessageActions, MessageMenu } from "@openbot/ui/features/conversation/MessageRendering";
 import { PendingSendStatus } from "@openbot/ui/features/conversation/PendingSendStatus";
 import { SubagentGroup } from "@openbot/ui/features/conversation/Subagents";
 import { TaskList } from "@openbot/ui/features/conversation/TaskList";
@@ -27,8 +29,10 @@ import { VoicePlayer } from "@openbot/ui/features/conversation/VoicePlayer";
 import { teamMemberName } from "@openbot/ui/features/team/TeamPersonAvatar";
 import { useText } from "@openbot/ui/text";
 import { createMemo, createSignal, For, Loading, lazy, onCleanup, Show, untrack } from "solid-js";
+import { useShowAgentSteps } from "../../agent-steps-preference";
 import { planItems, planTitle } from "../../app-message-projection";
 import { deviceSendShortcut } from "../../send-shortcut-preference";
+import { remoteRoutineRecovery } from "../servers/server-capabilities";
 import { speechModelReady } from "../speech/speech-model";
 import { recordingGone, speechReading, spokenReply } from "../speech/speech-playback";
 import {
@@ -41,6 +45,7 @@ import {
 } from "../speech/speech-replies";
 import { groupedMessageIds } from "./agent-message-timeline";
 import { continuesSenderRun } from "./chat-grouping";
+import { isChatVisualAppShortcut } from "./chat-visual-shortcuts";
 import { chatVisualPageUrl } from "./chat-visual-url";
 import { conversationRuntime } from "./conversation-runtime";
 import { useConversationViewScope } from "./conversation-scope";
@@ -49,7 +54,10 @@ import { agentSkillsMode } from "./installed-skills-source";
 import { MarketplaceSuggestionChatCard, marketplaceSuggestionKnown } from "./MarketplaceSuggestionChatCard";
 import { McpSignInChatCard } from "./McpSignInChatCard";
 import { RoutineChatCard } from "./RoutineChatCard";
+import { createChatWebhookRoutines, RoutineWebhookChatCard } from "./RoutineWebhookChatCard";
+import { desktopChatEventRoutinesApi } from "./routine-webhooks-api";
 import { PENDING_SEND_ID_PREFIX, pendingSendRetrySafe } from "./stores/pending-send-store";
+import { createTurnSteps } from "./turn-steps";
 
 /**
  * A message that renders only an action marker, with no bubble of its own. A routine instruction is
@@ -78,6 +86,7 @@ function rowDrawsTime(message: AgentMessage): boolean {
     !message.questionPrompt &&
     message.kind !== "plan" &&
     message.kind !== "subagents" &&
+    message.kind !== "memory-changes" &&
     chatVisualReply(message) === null
   );
 }
@@ -137,12 +146,14 @@ export function ConversationTimeline() {
     openExternalMessageUrl,
     openReactionMessageId,
     openBrowserTakeoverTab,
+    localSignIn,
     openRoutineSettings,
     openSkillSettings,
     openSharedFile,
     openWorkspaceFile,
     openQuote,
     pendingSendFor,
+    presentedQueueDeliveries,
     providerUpdateRequired,
     previewAttachment,
     props,
@@ -153,6 +164,8 @@ export function ConversationTimeline() {
     replyJump,
     respondToBrowserTakeover,
     replyToMessage,
+    addPageText,
+    setPageContext,
     retryPendingSend,
     scheduleUnreadDividerVisibilityUpdate,
     setChatSearchQuery,
@@ -313,6 +326,50 @@ export function ConversationTimeline() {
     const routine = props.routines?.find((candidate) => candidate.id === cardMarker.routineId);
     return routine && { action: cardMarker.action, routine, agentId };
   };
+  // Webhook routines load only for a person who can manage them, and only for a chat with an agent
+  // record of a routine that is not a schedule routine.
+  const webhookRoutinesNeeded = createMemo(() => {
+    // Before the schedule routines load, every record looks like one that is not a schedule routine.
+    if (!props.routines) return false;
+    const scheduled = new Set(props.routines.map((routine) => routine.id));
+    return timelineMessages().some((message) => {
+      const marker = routineCardMarker(message, message.actionMarker);
+      return marker !== undefined && marker.action !== "deleted" && !scheduled.has(marker.routineId);
+    });
+  });
+  const webhookRoutineSource = createMemo(
+    () => {
+      const agentId = props.agent?.id;
+      const api = webhookRoutinesNeeded() ? desktopChatEventRoutinesApi(props.server, props.runtime) : undefined;
+      return agentId && api
+        ? { api, agentId, serverId: props.server?.id, recovery: remoteRoutineRecovery(props.server) }
+        : undefined;
+    },
+    // A new adapter for the same host, agent and routes is the same source: no reload.
+    {
+      equals: (left, right) =>
+        left?.agentId === right?.agentId && left?.serverId === right?.serverId && left?.recovery === right?.recovery,
+    },
+  );
+  const webhookRoutines = createChatWebhookRoutines(webhookRoutineSource);
+  // The plain marker of a webhook routine opens it too: the host lists those routines on their own.
+  const availableRoutineIds = createMemo(() =>
+    props.availableRoutineIds
+      ? [...props.availableRoutineIds, ...webhookRoutines.state.routines.map((routine) => routine.id)]
+      : undefined,
+  );
+  /**
+   * An agent's newest record of a webhook routine it created or changed is a card with its URL, its
+   * signing secret and its events. An older record keeps the plain marker.
+   */
+  const webhookRoutineCard = (message: AgentMessage | undefined, marker: ChatActionMarkerModel) => {
+    const source = webhookRoutineSource();
+    const cardMarker = routineCardMarker(message, marker);
+    if (!source || !message || !cardMarker || cardMarker.action === "deleted") return undefined;
+    if (latestRoutineMessageIds().get(cardMarker.routineId) !== message.id) return undefined;
+    const routine = webhookRoutines.state.routines.find((candidate) => candidate.id === cardMarker.routineId);
+    return routine && { api: source.api, action: cardMarker.action, routine };
+  };
   /** A suggestion this client can draw is a card. One for an app it does not know keeps the marker. */
   const suggestionMarker = (marker: ChatActionMarkerModel) =>
     marker.kind === "marketplace-suggestion" && marketplaceSuggestionKnown(marker.appId) ? marker : undefined;
@@ -334,6 +391,13 @@ export function ConversationTimeline() {
     onLoadOlder: () => props.onLoadOlder?.(),
     onJump: () => setStickToLatest(false),
   });
+  const turnSteps = createTurnSteps({
+    messages: () => props.messages,
+    lines: () => props.turnStepLines,
+    activeTurnId: () => props.activeTurnId,
+  });
+  const showAgentSteps = useShowAgentSteps();
+  const channelWorkingSteps = createMemo(() => (channel ? turnSteps.workingSteps(channel.workingTurns()) : []));
   let cachedPrompt: { key: string; prompt: NonNullable<ConversationProps["prompt"]> } | null = null;
   const keyedPrompt = createMemo(() => {
     const prompt = props.prompt;
@@ -351,6 +415,28 @@ export function ConversationTimeline() {
    * agent asked without one, the prompt's questions draw it.
    */
   const pendingPromptBlock = createMemo(() => (keyedPrompt() ? props.promptUiBlock : undefined));
+  /**
+   * A direct chat with no message yet, and no turn, queued send or question. A queued send leaves the
+   * timeline for the queue tray, and the activity line shows only after a delay, so both are read here.
+   * Its empty state plays a faint turn from the agent's own routine and skill.
+   */
+  const emptyAgent = createMemo(() =>
+    !channel &&
+    timelineMessages().length === 0 &&
+    !props.hasOlder &&
+    !props.activeTurnId &&
+    presentedQueueDeliveries().length === 0 &&
+    !renderedAgentActivity() &&
+    !keyedPrompt()
+      ? props.agent
+      : undefined,
+  );
+  const sampleRoutinePrompt = () =>
+    props.routines?.find((routine) => routine.active && routine.instruction.trim())?.instruction ??
+    props.routines?.find((routine) => routine.instruction.trim())?.instruction;
+  // A skill of the agent's own: every agent has the managed OpenBot skills.
+  const sampleSkillName = () =>
+    installedSkills().find((skill) => skill.enabled !== false && skill.origin !== "managed")?.name;
   return (
     <>
       <span class="sr-only" role="status" aria-live="polite" aria-atomic="true">
@@ -424,7 +510,17 @@ export function ConversationTimeline() {
             <Show when={timelineMessages().length === 0}>
               <channel.EmptyState />
             </Show>
-          ) : null}
+          ) : (
+            <Show when={emptyAgent()}>
+              {(agent) => (
+                <AgentChatEmptyState
+                  agent={agent()}
+                  samplePrompt={sampleRoutinePrompt()}
+                  sampleSkillName={sampleSkillName()}
+                />
+              )}
+            </Show>
+          )}
           <div
             ref={setVirtualRootElement}
             class={["virtual-chat-list", { "virtual-chat-list-static": !messageVirtualizer.isVirtualized() }]}
@@ -508,6 +604,13 @@ export function ConversationTimeline() {
                   if (sender) return memberAuthor(sender).name;
                   return channel && referenced?.author === "agent" ? channel.author(referenced).name : undefined;
                 };
+                // A workspace path is in the workspace of the agent that wrote it. A person's message in
+                // a channel names no agent, so its paths stay text.
+                const workspaceAgentId = () => {
+                  if (!channel) return props.agent?.id;
+                  const current = message();
+                  return current?.author === "agent" ? current.senderAgentId : undefined;
+                };
                 // A row the host has not drawn yet has no reactions, replies or menu: its id is not the
                 // host's, even after the host answered.
                 const hostless = createMemo(() => message()?.id.startsWith(PENDING_SEND_ID_PREFIX) === true);
@@ -585,24 +688,43 @@ export function ConversationTimeline() {
                                       <Show
                                         when={mcpSignInConfig(marker())}
                                         fallback={
-                                          <ChatActionMarker
-                                            onOpenSkill={
-                                              agentSkillsMode(props.server, props.runtime) === "hidden"
-                                                ? undefined
-                                                : openSkillSettings
+                                          <Show
+                                            when={webhookRoutineCard(message() ?? initialMessage, marker())}
+                                            fallback={
+                                              <ChatActionMarker
+                                                onOpenSkill={
+                                                  agentSkillsMode(props.server, props.runtime) === "hidden"
+                                                    ? undefined
+                                                    : openSkillSettings
+                                                }
+                                                marker={marker()}
+                                                agents={props.agents}
+                                                announce={arrives}
+                                                routineAvailable={routineMarkerAvailable(
+                                                  marker(),
+                                                  availableRoutineIds(),
+                                                )}
+                                                onSelectAgent={props.onSelectAgent}
+                                                onOpenRoutine={openRoutineSettings}
+                                                onOpenHostedSite={(url) => void openExternalMessageUrl(url)}
+                                                onToggleRoutineRun={toggleRoutineRun}
+                                              />
                                             }
-                                            marker={marker()}
-                                            agents={props.agents}
-                                            announce={arrives}
-                                            routineAvailable={routineMarkerAvailable(
-                                              marker(),
-                                              props.availableRoutineIds,
+                                          >
+                                            {(card) => (
+                                              <RoutineWebhookChatCard
+                                                api={card().api}
+                                                action={card().action}
+                                                routine={card().routine}
+                                                connected={webhookRoutines.state.connected}
+                                                secret={webhookRoutines.state.secrets[card().routine.id] ?? null}
+                                                onSecret={(secret) =>
+                                                  webhookRoutines.setSecret(card().routine.id, secret)
+                                                }
+                                                onOpenRoutine={openRoutineSettings}
+                                              />
                                             )}
-                                            onSelectAgent={props.onSelectAgent}
-                                            onOpenRoutine={openRoutineSettings}
-                                            onOpenHostedSite={(url) => void openExternalMessageUrl(url)}
-                                            onToggleRoutineRun={toggleRoutineRun}
-                                          />
+                                          </Show>
                                         }
                                       >
                                         {(config) => (
@@ -781,6 +903,38 @@ export function ConversationTimeline() {
                     </div>
                   );
                 }
+                if (untrack(() => initialMessage.kind === "memory-changes")) {
+                  // Only a turn with no answer gets this row: an answer shows the changes in its steps.
+                  return (
+                    <div
+                      data-index={virtualRow.index}
+                      ref={messageVirtualizer.measureElement}
+                      class="virtual-chat-row"
+                      style={{
+                        transform: messageVirtualizer.isVirtualized()
+                          ? `translateY(${virtualRow.start - messageVirtualizer.scrollMargin()}px)`
+                          : "none",
+                      }}
+                    >
+                      <Show when={message()?.id === unreadBoundaryMessageId()}>
+                        <UnreadMessagesDivider
+                          elementRef={(element) => {
+                            setUnreadMessagesDividerElement(element);
+                            scheduleUnreadDividerVisibilityUpdate();
+                          }}
+                        />
+                      </Show>
+                      <ChatRowBoundary>
+                        <article data-chat-search-message={message()?.id}>
+                          <AgentStepsDisclosure
+                            steps={turnSteps.stepsOfTurn((message() ?? initialMessage).turnId)}
+                            defaultOpen={showAgentSteps()}
+                          />
+                        </article>
+                      </ChatRowBoundary>
+                    </div>
+                  );
+                }
                 const initialVisual = untrack(() => chatVisualReply(initialMessage));
                 // The desktop loads the page from its own scheme. The web client has no page URL: it
                 // reads the HTML and shows it as `srcdoc`. Another client shows the title and file.
@@ -846,6 +1000,9 @@ export function ConversationTimeline() {
                             title={(message() ?? initialMessage).body}
                             height={visual().height}
                             onOpenLink={(url) => void openExternalMessageUrl(url)}
+                            onMessage={addPageText}
+                            onContext={(text) => setPageContext(message() ?? initialMessage, text)}
+                            isAppShortcut={isChatVisualAppShortcut}
                           />
                         </article>
                       </ChatRowBoundary>
@@ -863,6 +1020,25 @@ export function ConversationTimeline() {
                     actor: { kind: "user" as const },
                   }));
                 });
+                // The action row and the right-click menu run the same actions.
+                const messageActions = {
+                  onReact: (emoji: MessageReaction | null) => {
+                    const currentMessage = message();
+                    if (currentMessage) void reactToMessage(currentMessage, emoji);
+                  },
+                  onReply: () => {
+                    const currentMessage = message();
+                    if (currentMessage) replyToMessage(currentMessage);
+                  },
+                  onCopy: () => {
+                    const currentMessage = message();
+                    if (currentMessage) void copyMessage(currentMessage);
+                  },
+                };
+                const messageReadAloud = () =>
+                  spokenReplyIds().has((message() ?? initialMessage).id)
+                    ? undefined
+                    : readAloudAction(message() ?? initialMessage);
                 return (
                   <div
                     data-index={virtualRow.index}
@@ -892,6 +1068,13 @@ export function ConversationTimeline() {
                           scheduleUnreadDividerVisibilityUpdate();
                         }}
                       />
+                    </Show>
+                    <Show when={turnSteps.stepsAbove(message()?.id)}>
+                      {(steps) => (
+                        <ChatRowBoundary>
+                          <AgentStepsDisclosure steps={steps()} defaultOpen={showAgentSteps()} />
+                        </ChatRowBoundary>
+                      )}
                     </Show>
                     <ChatRowBoundary>
                       <Show
@@ -926,73 +1109,76 @@ export function ConversationTimeline() {
                             onPreview={(attachment) => void previewAttachment(attachment)}
                             onAttachmentAction={attachmentAction}
                             onOpenSharedFile={openSharedFile}
-                            onOpenWorkspaceFile={openWorkspaceFile}
+                            onOpenWorkspaceFile={
+                              workspaceAgentId()
+                                ? (path) => openWorkspaceFile(path, undefined, workspaceAgentId())
+                                : undefined
+                            }
                             onOpenQuote={openQuote}
                             onDownload={(attachment) => attachmentAction(attachment, "download")}
                             mediaSource={runtime.attachmentMedia}
-                            class={pending() ? "message-entry-pending" : undefined}
-                            footer={
-                              pending() ? (
-                                <PendingSendStatus
-                                  state={pendingState()}
-                                  updateRequired={Boolean(providerUpdateRequired())}
-                                  error={pendingSend()?.error ?? null}
-                                  retrySafe={pendingRetrySafe()}
-                                  canEdit={!composerHasContent() && !editingDeliveryId()}
-                                  onRetry={() => {
-                                    const send = pendingSend();
-                                    if (send) retryPendingSend(send.clientMessageId);
-                                  }}
-                                  onEdit={() => {
-                                    const send = pendingSend();
-                                    if (send) editPendingSend(send.clientMessageId);
-                                  }}
-                                  onDismiss={() => {
-                                    const send = pendingSend();
-                                    if (send) dismissPendingSend(send.clientMessageId);
-                                  }}
-                                />
-                              ) : undefined
-                            }
                             actions={
-                              <Show when={!hostless()}>
-                                <MessageActions
-                                  message={message() ?? initialMessage}
-                                  pickerOpen={openReactionMessageId() === message()?.id}
-                                  expandedEmoji={expandedEmojiMessageId() === message()?.id}
-                                  copied={copiedMessageId() === message()?.id}
-                                  reactions={!channel}
-                                  authorName={channel ? author().name : undefined}
-                                  onTogglePicker={() => {
-                                    const messageId = message()?.id;
-                                    if (!messageId) return;
-                                    setOpenReactionMessageId((current) => (current === messageId ? null : messageId));
-                                    setExpandedEmojiMessageId(null);
-                                  }}
-                                  onExpandEmoji={() => {
-                                    const messageId = message()?.id;
-                                    if (!messageId) return;
-                                    setExpandedEmojiMessageId((current) => (current === messageId ? null : messageId));
-                                  }}
-                                  onReact={(emoji) => {
-                                    const currentMessage = message();
-                                    if (currentMessage) void reactToMessage(currentMessage, emoji);
-                                  }}
-                                  onReply={() => {
-                                    const currentMessage = message();
-                                    if (currentMessage) replyToMessage(currentMessage);
-                                  }}
-                                  onCopy={() => {
-                                    const currentMessage = message();
-                                    if (currentMessage) void copyMessage(currentMessage);
-                                  }}
-                                  readAloud={
-                                    spokenReplyIds().has((message() ?? initialMessage).id)
-                                      ? undefined
-                                      : readAloudAction(message() ?? initialMessage)
-                                  }
-                                />
-                              </Show>
+                              <>
+                                <Show when={pending()}>
+                                  <PendingSendStatus
+                                    state={pendingState()}
+                                    updateRequired={Boolean(providerUpdateRequired())}
+                                    error={pendingSend()?.error ?? null}
+                                    retrySafe={pendingRetrySafe()}
+                                    canEdit={!composerHasContent() && !editingDeliveryId()}
+                                    onRetry={() => {
+                                      const send = pendingSend();
+                                      if (send) retryPendingSend(send.clientMessageId);
+                                    }}
+                                    onEdit={() => {
+                                      const send = pendingSend();
+                                      if (send) editPendingSend(send.clientMessageId);
+                                    }}
+                                    onDismiss={() => {
+                                      const send = pendingSend();
+                                      if (send) dismissPendingSend(send.clientMessageId);
+                                    }}
+                                  />
+                                </Show>
+                                <Show when={!hostless()}>
+                                  <MessageActions
+                                    message={message() ?? initialMessage}
+                                    pickerOpen={openReactionMessageId() === message()?.id}
+                                    expandedEmoji={expandedEmojiMessageId() === message()?.id}
+                                    copied={copiedMessageId() === message()?.id}
+                                    reactions={!channel}
+                                    authorName={channel ? author().name : undefined}
+                                    onTogglePicker={() => {
+                                      const messageId = message()?.id;
+                                      if (!messageId) return;
+                                      setOpenReactionMessageId((current) => (current === messageId ? null : messageId));
+                                      setExpandedEmojiMessageId(null);
+                                    }}
+                                    onExpandEmoji={() => {
+                                      const messageId = message()?.id;
+                                      if (!messageId) return;
+                                      setExpandedEmojiMessageId((current) =>
+                                        current === messageId ? null : messageId,
+                                      );
+                                    }}
+                                    {...messageActions}
+                                    readAloud={messageReadAloud()}
+                                  />
+                                </Show>
+                              </>
+                            }
+                            menu={
+                              hostless()
+                                ? undefined
+                                : () => (
+                                    <MessageMenu
+                                      message={message() ?? initialMessage}
+                                      reactions={!channel}
+                                      authorName={channel ? author().name : undefined}
+                                      {...messageActions}
+                                      readAloud={messageReadAloud()}
+                                    />
+                                  )
                             }
                           >
                             <Show when={playerKind()}>
@@ -1063,7 +1249,11 @@ export function ConversationTimeline() {
               when={!channel}
               fallback={
                 <Show when={channel && channel.workers().length > 0}>
-                  <ChannelActivityIndicator workers={channel?.workers() ?? []} />
+                  <ChannelActivityIndicator
+                    workers={channel?.workers() ?? []}
+                    steps={channelWorkingSteps()}
+                    stepsOpenByDefault={showAgentSteps()}
+                  />
                 </Show>
               }
             >
@@ -1075,6 +1265,8 @@ export function ConversationTimeline() {
                     label={activity().label}
                     phase={activity().phase}
                     since={activity().since}
+                    steps={turnSteps.activeSteps()}
+                    stepsOpenByDefault={showAgentSteps()}
                   />
                 )}
               </Show>
@@ -1159,6 +1351,8 @@ export function ConversationTimeline() {
                 onOpen={openBrowserTakeoverTab}
                 onComplete={() => respondToBrowserTakeover("complete")}
                 onCancel={() => respondToBrowserTakeover("cancel")}
+                onSignInLocally={localSignIn.canStart(browserTakeoverTab()) ? localSignIn.startForTakeover : undefined}
+                signInBlocked={localSignIn.blockedTakeover()}
                 browserSecret={{
                   loadPreview: runtime.browser.capturePreview,
                   onRespond: runtime.agent.respondToBrowserSecret,
@@ -1174,6 +1368,7 @@ export function ConversationTimeline() {
                 preview={resolution().preview}
                 previewStatus={resolution().previewStatus}
                 decision={resolution().decision}
+                signInBlocked={resolution().signInBlocked}
                 onComplete={async () => false}
                 onCancel={async () => false}
               />

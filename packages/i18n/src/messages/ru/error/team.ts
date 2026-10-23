@@ -10,6 +10,7 @@ export const messages = {
   "error.team.accountChangedDuringCreate":
     "Аккаунт, в который выполнен вход, изменился во время создания этого сервера.",
   "error.team.notConfigured": "Этот OpenBot не настроен.",
+  "error.team.keyRotationMissing": "Нет ожидающей смены ключа сервера.",
   "error.team.serverNotActive": "Этот сервер больше не является активным для аккаунта, в который выполнен вход.",
   "error.team.logoInvalid": "Выберите корректное изображение PNG, JPEG или WebP размером до 512 КБ.",
   "error.team.ownerMembershipConflict": "Членство владельца в панели управления противоречит этому хосту.",
@@ -60,6 +61,7 @@ export const messages = {
   "error.team.channelDeleteUnsupported": "Это подключение не поддерживает удаление каналов.",
   "error.team.membersCannotDeleteChannels": "Участники не могут удалять каналы.",
   "error.team.membersCannotArchiveChannels": "Участники не могут архивировать каналы.",
+  "error.team.membersCannotRestoreChannels": "Участники не могут восстанавливать каналы.",
   "error.team.sharedDataUnsupported": "Это подключение не поддерживает общие данные.",
   "error.team.agentInstallUnsupported": "Это подключение не поддерживает добавление агентов.",
   "error.team.agentHideUnsupported": "Это подключение не поддерживает скрытие агентов.",
@@ -86,6 +88,7 @@ export const messages = {
   "error.team.hostIdentityUnsupported": "Это подключение не поддерживает изменение идентификатора сервера.",
   "error.team.hostUpdateUnsupported": "Это подключение не поддерживает обновление хоста.",
   "error.team.hostTimezoneUnsupported": "Это подключение не поддерживает часовой пояс сервера.",
+  "error.team.routineResultsUnsupported": "Это подключение не поддерживает места отправки рутин.",
   "error.team.agentMemoryLimitUnsupported": "Это подключение не поддерживает лимит памяти агентов.",
   "error.team.attachmentNameRequired": "Нужно безопасное имя вложения.",
   "error.team.attachmentNotFound": "Вложение не найдено.",

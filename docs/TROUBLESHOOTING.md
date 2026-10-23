@@ -50,14 +50,18 @@ Do not start OpenBot with `--no-sandbox`. It is not a supported workaround. The 
 boundary between a web renderer and the rest of your computer, and OpenBot gives its agents full
 local access on the other side of it.
 
-## Voice prompts or remote desktop are missing on Linux
-
-The Linux build has no voice transcription runtime, so the microphone control is not drawn.
+## Remote desktop is missing on Linux
 
 Remote desktop on Linux needs the x64 AppImage and an X11 session. Sunshine captures the X11 screen
 and sends mouse and keyboard input through the XTest extension. Under Wayland, or with no `DISPLAY`,
 remote desktop reports that it needs an X11 session. Log in with an Xorg session, or start OpenBot
 under `xvfb-run` on a server. The arm64 AppImage does not include the runtime.
+
+## Voice prompts fail on an older Linux
+
+The voice runtime of the x64 AppImage needs glibc 2.32 or later, such as Ubuntu 22.04 or Debian 12.
+On Ubuntu 20.04 or Debian 11, the dictation model downloads, but the runtime does not load, and
+voice prompts show an error. Use a newer distribution. The arm64 AppImage needs glibc 2.17 or later.
 
 ## OpenBot is slow or stops because of the GPU on Linux
 

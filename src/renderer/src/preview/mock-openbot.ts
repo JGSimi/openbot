@@ -9,6 +9,7 @@ import type {
 import {
   type AccountUsage,
   type AgentAccessChange,
+  type AgentBrowserProfile,
   type AgentEvent,
   type AgentMemory,
   type AgentMemoryLimitPreference,
@@ -21,6 +22,7 @@ import {
   type AgentTasksSnapshot,
   type AgentTemplatePublication,
   type AnalyticsPreference,
+  type AppAppearancePreference,
   type AppBehaviorPreference,
   type AppInfo,
   type AppInterfaceSizePreference,
@@ -29,15 +31,19 @@ import {
   type ApprovalAutomationPreference,
   type AppSetupState,
   type AttachmentImportEvent,
+  type AvatarHue,
   agentAutoApprovalEnabled,
   agentAutomationAllowed,
+  agentBrowserProfile,
   agentComputerUseEnabled,
   agentTaskLimit,
+  type BrowserProfileSummary,
   type BusyMessageModePreference,
   type CentralAuthState,
   type ClientAgentModelOption,
   type ClientAgentSummary,
   CONTEXT_RESET_ITEM_TYPE,
+  CONVERSATION_MEMORY_CHANGES_ITEM_TYPE,
   type ComputerUseState,
   type ConversationMessage,
   type ConversationSnapshot,
@@ -47,6 +53,7 @@ import {
   createMcpServerId,
   DEFAULT_AGENT_ACCESS,
   DEFAULT_AGENT_MEMORY_LIMIT,
+  DEFAULT_APP_APPEARANCE,
   DEFAULT_APP_INTERFACE_SIZE,
   DEFAULT_APP_LOGO_COLOR,
   DEFAULT_APPROVAL_AUTOMATION_PREFERENCE,
@@ -54,7 +61,9 @@ import {
   DEFAULT_DYNAMIC_ISLAND_PREFERENCE,
   DEFAULT_PROVIDER_ACCOUNT_ID,
   DEFAULT_PROVIDER_DETECTION_SETTINGS,
+  DEFAULT_REMOTE_NETWORK_ROUTE,
   DEFAULT_REMOTE_SESSION_REUSE_PREFERENCE,
+  DEFAULT_TRANSPARENT_WINDOW,
   type DirectConversationSnapshot,
   type DirectMessageRealtimeEvent,
   type DirectTypingRealtimeEvent,
@@ -69,6 +78,7 @@ import {
   isAgentSummary,
   isReleasedRoutineSchedule,
   type MacPermissionId,
+  nextBrowserProfileHue,
   normalizeMcpConfig,
   type OpenAttachmentInput,
   type OpenBotDesktopApi,
@@ -81,6 +91,7 @@ import {
   type QueuedMessageReceipt,
   type QueueSnapshot,
   type RemoteDesktopSession,
+  type RemoteNetworkRouteState,
   type RemoteSessionReusePreference,
   type ReorderQueueInput,
   type RespondToPromptInput,
@@ -302,11 +313,18 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   let agentAccess: AgentAccessChange = { revision: 0, everyone: {}, roles: [] };
   const agentMemoryLimitListeners = new Set<(preference: AgentMemoryLimitPreference) => void>();
   let remoteSessionReuse: RemoteSessionReusePreference = { ...DEFAULT_REMOTE_SESSION_REUSE_PREFERENCE };
+  // The preview computer has Tailscale, so the private route shows what it finds.
+  let remoteNetworkRoute: RemoteNetworkRouteState = { route: DEFAULT_REMOTE_NETWORK_ROUTE, tailscaleConnected: true };
   let appBehavior: AppBehaviorPreference = { launchAtLogin: false, keepRunningInBackground: false };
   let languagePreference = clone<AppLanguagePreference>(options.languagePreference ?? { language: "system" });
   const languageListeners = new Set<(preference: AppLanguagePreference) => void>();
   let logoColorPreference: AppLogoColorPreference = { color: DEFAULT_APP_LOGO_COLOR };
   const logoColorListeners = new Set<(preference: AppLogoColorPreference) => void>();
+  let appearancePreference: AppAppearancePreference = {
+    appearance: DEFAULT_APP_APPEARANCE,
+    transparentWindow: DEFAULT_TRANSPARENT_WINDOW,
+  };
+  const appearanceListeners = new Set<(preference: AppAppearancePreference) => void>();
   let interfaceSizePreference: AppInterfaceSizePreference = { percent: DEFAULT_APP_INTERFACE_SIZE };
   const interfaceSizeListeners = new Set<(preference: AppInterfaceSizePreference) => void>();
   const approvalAutomationListeners = new Set<(preference: ApprovalAutomationPreference) => void>();
@@ -333,6 +351,36 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     return agentStatus;
   };
   let agents = clone(options.agents ?? STORY_AGENT_SUMMARIES);
+  // Two profiles, so the agent select and the manage dialog show a list. "Client B" has no agents.
+  let browserProfiles: { id: string; name: string; hue: AvatarHue }[] = [
+    { id: "0a1b2c3d4e5f60718293a4b5c6d7e8f9", name: "Client A", hue: 215 },
+    { id: "f9e8d7c6b5a4938271605f4e3d2c1b0a", name: "Client B", hue: 30 },
+  ];
+  const browserProfileSummary = (profile: { id: string; name: string; hue: AvatarHue }): BrowserProfileSummary => ({
+    ...profile,
+    agentIds: agents.filter((agent) => agent.browserProfileId === profile.id).map((agent) => agent.id),
+    tabCount: 0,
+  });
+  // The agent store keeps `ownBrowserSession` set with a named profile, so an older build never
+  // opens the profile's tabs in the shared session.
+  const withBrowserProfile = (
+    { browserProfileId: _previous, ...agent }: ClientAgentSummary,
+    profile: AgentBrowserProfile,
+  ): ClientAgentSummary =>
+    profile.kind === "profile"
+      ? { ...agent, ownBrowserSession: true, browserProfileId: profile.profileId }
+      : { ...agent, ownBrowserSession: profile.kind === "agent" };
+  const requireBrowserProfile = (profileId: string) => {
+    const profile = browserProfiles.find((candidate) => candidate.id === profileId);
+    if (!profile) throw new Error(sourceText("error.backend.browserProfileNotFound"));
+    return profile;
+  };
+  const requireFreeBrowserProfileName = (name: string, profileId?: string) => {
+    if (
+      browserProfiles.some((profile) => profile.id !== profileId && profile.name.toLowerCase() === name.toLowerCase())
+    )
+      throw new Error(sourceText("error.backend.browserProfileNameTaken"));
+  };
   const sessionSettings = new Map<string, AgentSessionSettings>();
   function previewSessionSettings(agentId: string): AgentSessionSettings {
     const agent = agents.find((candidate) => candidate.id === agentId);
@@ -400,6 +448,8 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   let updateStatus = clone(options.updateStatus ?? STORY_UPDATE_STATUS);
   let updatePreference: UpdatePreference = { autoDownload: true, allowRemoteUpdates: true, autoInstall: false };
   const usage = clone(options.usage ?? STORY_USAGE);
+  /** The usage resets left on each provider account after the preview spent one. */
+  const usageResets = new Map<string, number>();
   let agentCounter = agents.length;
   let hostedSites = clone(STORY_HOSTED_SITES);
   let detectionSettings: ProviderDetectionSettings = clone(DEFAULT_PROVIDER_DETECTION_SETTINGS);
@@ -811,6 +861,11 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
       remoteSessionReuse = { keepBetweenRuns };
       return clone(remoteSessionReuse);
     },
+    getRemoteNetworkRoute: async () => clone(remoteNetworkRoute),
+    setRemoteNetworkRoute: async ({ route }) => {
+      remoteNetworkRoute = { ...remoteNetworkRoute, route };
+      return clone(remoteNetworkRoute);
+    },
     setBusyMessageModePreference: async ({ mode }) => {
       busyMessageMode = { mode };
       return clone(busyMessageMode);
@@ -841,6 +896,18 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     onAppLogoColorPreference: (listener) => {
       logoColorListeners.add(listener);
       return () => logoColorListeners.delete(listener);
+    },
+    // The preview has no main process to set `prefers-color-scheme`, so the choice is saved only.
+    // The Storybook toolbar sets the colors of a story.
+    getAppAppearancePreference: async () => clone(appearancePreference),
+    setAppAppearancePreference: async (change) => {
+      appearancePreference = { ...appearancePreference, ...change };
+      for (const listener of appearanceListeners) listener(clone(appearancePreference));
+      return clone(appearancePreference);
+    },
+    onAppAppearancePreference: (listener) => {
+      appearanceListeners.add(listener);
+      return () => appearanceListeners.delete(listener);
     },
     getAppInterfaceSizePreference: async () => clone(interfaceSizePreference),
     setAppInterfaceSizePreference: async ({ percent }) => {
@@ -991,6 +1058,24 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
       return clone(
         changeProviderAccounts(provider, (accounts) => accounts.filter((account) => account.id !== accountId)),
       );
+    },
+    // Codex gives the preview's own sign-in two usage resets; each other connected Codex account has none.
+    providerUsageResets: async (provider) =>
+      provider === "codex"
+        ? (agentStatus.providers?.find((row) => row.id === provider)?.accounts ?? [])
+            .filter((account) => account.state === "connected")
+            .map((account) => ({
+              provider,
+              accountId: account.id,
+              available: usageResets.get(account.id) ?? (account.id === DEFAULT_PROVIDER_ACCOUNT_ID ? 2 : 0),
+            }))
+        : [],
+    resetProviderUsage: async ({ provider, accountId }) => {
+      const readings = await api.providerUsageResets(provider);
+      const available = readings.find((reading) => reading.accountId === accountId)?.available ?? 0;
+      if (available === 0) return "noCredit";
+      usageResets.set(accountId, available - 1);
+      return "reset";
     },
     getProviderApiKeyState: async (provider) => ({
       provider,
@@ -1219,6 +1304,8 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
       removeAccount: async (input) => {
         await api.removeProviderAccount(input);
       },
+      usageResets: (provider) => api.providerUsageResets(provider),
+      resetUsage: (input) => api.resetProviderUsage(input),
       startRelaySignIn: async () => undefined,
       relaySignInStatus: async () => ({ page: null, result: null }),
       openRelaySignIn: async () => undefined,
@@ -1527,6 +1614,56 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         await api.agent.updateAgent(input);
         return api.agent.getAgentBackupModels(input.agentId);
       },
+      getAgentTaskLimit: async (agentId) => {
+        const agent = agents.find((candidate) => candidate.id === agentId);
+        if (!agent) throw new Error("Agent not found");
+        return { taskLimit: agent.taskLimit ?? null };
+      },
+      updateAgentTaskLimit: async (input) => {
+        await api.agent.updateAgent(input);
+        return api.agent.getAgentTaskLimit(input.agentId);
+      },
+      listBrowserProfiles: async () => ({
+        profiles: browserProfiles.map(browserProfileSummary),
+        sharedAgentIds: agents.filter((agent) => agentBrowserProfile(agent).kind === "shared").map((agent) => agent.id),
+      }),
+      createBrowserProfile: async (name) => {
+        requireFreeBrowserProfileName(name);
+        const hue = nextBrowserProfileHue(browserProfiles.map((profile) => profile.hue));
+        const profile = { id: crypto.randomUUID().replaceAll("-", ""), name, hue };
+        browserProfiles = [...browserProfiles, profile];
+        return browserProfileSummary(profile);
+      },
+      updateBrowserProfile: async ({ profileId, name, hue }) => {
+        const current = requireBrowserProfile(profileId);
+        if (name !== undefined) requireFreeBrowserProfileName(name, profileId);
+        const next = { ...current, name: name ?? current.name, hue: hue ?? current.hue };
+        browserProfiles = browserProfiles.map((profile) => (profile.id === profileId ? next : profile));
+        return browserProfileSummary(requireBrowserProfile(profileId));
+      },
+      clearBrowserData: async (input) => {
+        if ("profileId" in input) requireBrowserProfile(input.profileId);
+      },
+      deleteBrowserProfile: async (profileId) => {
+        requireBrowserProfile(profileId);
+        browserProfiles = browserProfiles.filter((profile) => profile.id !== profileId);
+        agents = agents.map((agent) =>
+          agent.browserProfileId === profileId ? withBrowserProfile(agent, { kind: "shared" }) : agent,
+        );
+        emitAgentEvent({ type: "agents-changed", agents });
+      },
+      getAgentBrowserProfile: async (agentId) => {
+        const agent = agents.find((candidate) => candidate.id === agentId);
+        if (!agent) throw new Error("Agent not found");
+        return agentBrowserProfile(agent);
+      },
+      updateAgentBrowserProfile: async ({ agentId, profile }) => {
+        if (profile.kind === "profile") requireBrowserProfile(profile.profileId);
+        agents = agents.map((agent) => (agent.id === agentId ? withBrowserProfile(agent, profile) : agent));
+        emitAgentEvent({ type: "agents-changed", agents });
+        return api.agent.getAgentBrowserProfile(agentId);
+      },
+      listBrowserTabProfiles: async () => [],
       updateAgentAdminSettings: async ({ agentId, access, autoApprove }) => {
         const agent = agents.find((candidate) => candidate.id === agentId);
         if (!agent) throw new Error("Agent not found");
@@ -2110,6 +2247,13 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
           turnId,
           detail: "Reviewing your request…",
         });
+        emitAgentEvent({
+          type: "turn-progress",
+          agentId: input.agentId,
+          threadId: getSnapshot(input.agentId).threadId ?? `thread-${input.agentId}`,
+          turnId,
+          detail: "Searched its memories: 1 found",
+        });
 
         schedule(() => {
           const assistantMessage: ConversationMessage = {
@@ -2121,9 +2265,25 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
             createdAt: new Date().toISOString(),
             status: "completed",
           };
+          // A message that asks the agent to remember something commits one memory, as a real turn does.
+          const memoryMessage: ConversationMessage[] = /\bremember\b/iu.test(input.text)
+            ? [
+                {
+                  id: `${turnId}:memory-changes`,
+                  turnId,
+                  author: "system",
+                  source: "system",
+                  text: "Memory: 1 saved, 0 updated, 0 forgotten.",
+                  createdAt: new Date().toISOString(),
+                  status: "completed",
+                  itemType: CONVERSATION_MEMORY_CHANGES_ITEM_TYPE,
+                  memoryChanges: [{ memoryId: `memory-${turnId}`, action: "saved", text: input.text.slice(0, 500) }],
+                },
+              ]
+            : [];
           updateSnapshot(input.agentId, (snapshot) => {
             snapshot.activeTurnId = null;
-            snapshot.messages = [...snapshot.messages, assistantMessage];
+            snapshot.messages = [...snapshot.messages, assistantMessage, ...memoryMessage];
           });
           queues.set(input.agentId, {
             agentId: input.agentId,

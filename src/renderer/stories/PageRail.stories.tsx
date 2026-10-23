@@ -1,6 +1,6 @@
 import { accountUsageProviderRows } from "@openbot/ui/features/account/account-usage-view";
 import { HelpMenu } from "@openbot/ui/features/updates/HelpMenu";
-import { PageRail, type PageRailPage } from "@openbot/ui/features/window/PageRail";
+import { PageRail, type PageRailPage, type PageRailProps } from "@openbot/ui/features/window/PageRail";
 import { useText } from "@openbot/ui/text";
 import { createSignal } from "solid-js";
 import { fn } from "storybook/test";
@@ -15,11 +15,16 @@ const usageRows = accountUsageProviderRows({
       primary: { usedPercent: 28, windowDurationMins: 300, resetsAt: nowSeconds + 2 * 3_600 },
       secondary: { usedPercent: 15, windowDurationMins: 10_080, resetsAt: nowSeconds + 4 * 86_400 },
     },
+    {
+      id: "cursor",
+      primary: { usedPercent: 37, windowDurationMins: 43_200, resetsAt: nowSeconds + 18 * 86_400 },
+      secondary: { usedPercent: 82, windowDurationMins: 43_200, resetsAt: nowSeconds + 18 * 86_400 },
+    },
   ],
 });
 
 /** The page rail as the desktop window shows it. Hover a button, or move to it with Tab, to see its tooltip. */
-function RailPreview(props: { updateReady?: boolean }) {
+function RailPreview(props: { updateReady?: boolean; logo?: PageRailProps["logo"] }) {
   const { t } = useText();
   const [current, setCurrent] = createSignal<PageRailPage | null>("agents");
   return (
@@ -37,6 +42,7 @@ function RailPreview(props: { updateReady?: boolean }) {
           onMarketplace={fn()}
           onSettings={() => setCurrent("settings")}
           settingsNotice={props.updateReady ? t("account.update.ready") : undefined}
+          logo={props.logo}
           help={
             <HelpMenu
               news={[]}
@@ -68,4 +74,14 @@ export const Default: Story = {};
 /** The Settings tooltip also says what the dot stands for. */
 export const SettingsNotice: Story = {
   args: { updateReady: true },
+};
+
+/** The web client: no macOS window buttons, so the logo in the top row links to the OpenBot site. */
+export const WebLogo: Story = {
+  args: { logo: { variant: "production", href: "/" } },
+};
+
+/** Windows and Linux: the logo is in the top row, with no link. */
+export const DesktopLogo: Story = {
+  args: { logo: { variant: "production" } },
 };

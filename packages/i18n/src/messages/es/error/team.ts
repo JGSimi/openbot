@@ -9,6 +9,7 @@ export const messages = {
   "error.team.identityCreateFailed": "No se pudo crear la identidad del equipo.",
   "error.team.accountChangedDuringCreate": "La cuenta con sesión iniciada cambió mientras se creaba este servidor.",
   "error.team.notConfigured": "Este OpenBot no se ha configurado.",
+  "error.team.keyRotationMissing": "No hay ningún cambio de clave del servidor pendiente.",
   "error.team.serverNotActive": "Este servidor ya no es el activo para la cuenta con sesión iniciada.",
   "error.team.logoInvalid": "Elige una imagen PNG, JPEG o WebP válida de hasta 512 KB.",
   "error.team.ownerMembershipConflict":
@@ -60,6 +61,7 @@ export const messages = {
   "error.team.channelDeleteUnsupported": "Esta conexión no admite la eliminación de canales.",
   "error.team.membersCannotDeleteChannels": "Los miembros no pueden eliminar canales.",
   "error.team.membersCannotArchiveChannels": "Los miembros no pueden archivar canales.",
+  "error.team.membersCannotRestoreChannels": "Los miembros no pueden restaurar canales.",
   "error.team.sharedDataUnsupported": "Esta conexión no admite datos compartidos.",
   "error.team.agentInstallUnsupported": "Esta conexión no permite añadir agentes.",
   "error.team.agentHideUnsupported": "Esta conexión no permite ocultar agentes.",
@@ -86,6 +88,7 @@ export const messages = {
   "error.team.hostIdentityUnsupported": "Esta conexión no admite cambios en la identidad del servidor.",
   "error.team.hostUpdateUnsupported": "Esta conexión no admite actualizaciones del host.",
   "error.team.hostTimezoneUnsupported": "Esta conexión no admite la zona horaria del servidor.",
+  "error.team.routineResultsUnsupported": "Esta conexión no admite destinos de rutinas.",
   "error.team.agentMemoryLimitUnsupported": "Esta conexión no admite el límite de recuerdos de los agentes.",
   "error.team.attachmentNameRequired": "Se requiere un nombre seguro para el archivo adjunto.",
   "error.team.attachmentNotFound": "No se encontró el archivo adjunto.",

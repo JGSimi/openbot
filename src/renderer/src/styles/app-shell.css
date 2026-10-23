@@ -882,6 +882,7 @@ textarea {
   justify-content: space-between;
   gap: var(--openbot-space-2);
   border-bottom: 1px solid var(--openbot-border);
+  /* The logo of the page rail (`page-rail.css`) has the same top padding, to stay on this center line. */
   padding: 2px 3px 0 10px;
 }
 
@@ -2475,7 +2476,7 @@ textarea {
 .avatar-editor {
   position: relative;
   z-index: var(--openbot-layer-popover);
-  width: min(284px, calc(var(--settings-panel-width, 296px) - 30px));
+  width: min(284px, calc(var(--settings-panel-width, 360px) - 30px));
   max-width: calc(100vw - 24px);
   margin: 0;
   overflow: hidden;

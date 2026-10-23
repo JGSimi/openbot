@@ -9,6 +9,7 @@ export const messages = {
   "error.team.identityCreateFailed": "Não foi possível criar a identidade da equipe.",
   "error.team.accountChangedDuringCreate": "A conta conectada mudou durante a criação deste servidor.",
   "error.team.notConfigured": "Este OpenBot não foi configurado.",
+  "error.team.keyRotationMissing": "Nenhuma alteração de chave do servidor está pendente.",
   "error.team.serverNotActive": "Este servidor não é mais o servidor ativo da conta conectada.",
   "error.team.logoInvalid": "Escolha uma imagem PNG, JPEG ou WebP válida de até 512 KB.",
   "error.team.ownerMembershipConflict":
@@ -61,6 +62,7 @@ export const messages = {
   "error.team.channelDeleteUnsupported": "Esta conexão não oferece suporte à exclusão de canais.",
   "error.team.membersCannotDeleteChannels": "Membros não podem excluir canais.",
   "error.team.membersCannotArchiveChannels": "Membros não podem arquivar canais.",
+  "error.team.membersCannotRestoreChannels": "Membros não podem restaurar canais.",
   "error.team.sharedDataUnsupported": "Esta conexão não oferece suporte a dados compartilhados.",
   "error.team.agentInstallUnsupported": "Esta conexão não oferece suporte à adição de agentes.",
   "error.team.agentHideUnsupported": "Esta conexão não oferece suporte à ocultação de agentes.",
@@ -88,6 +90,7 @@ export const messages = {
   "error.team.hostIdentityUnsupported": "Esta conexão não oferece suporte a alterações na identidade do servidor.",
   "error.team.hostUpdateUnsupported": "Esta conexão não oferece suporte a atualizações do computador anfitrião.",
   "error.team.hostTimezoneUnsupported": "Esta conexão não oferece suporte ao fuso horário do servidor.",
+  "error.team.routineResultsUnsupported": "Esta conexão não oferece suporte a destinos de rotinas.",
   "error.team.agentMemoryLimitUnsupported": "Esta conexão não oferece suporte ao limite de memórias dos agentes.",
   "error.team.attachmentNameRequired": "É necessário informar um nome seguro para o anexo.",
   "error.team.attachmentNotFound": "Anexo não encontrado.",

@@ -1,4 +1,5 @@
 import { isKnownAgentProvider } from "@openbot/contracts/agent-providers";
+import type { AppAppearance } from "@openbot/contracts/app-appearance";
 import type { AppLanguage } from "@openbot/contracts/app-language";
 import { HOSTED_SERVER_CONTACT_URL } from "@openbot/contracts/hosted-servers";
 import {
@@ -12,13 +13,16 @@ import {
   canAdministerServer,
   decodeAgentBackupModelSettings,
   decodeAgentHostSettings,
+  decodeAgentTaskLimitSettings,
   type ServerConnectionState,
   type ServerSummary,
 } from "@openbot/contracts/ipc";
 import { AGENT_BACKUP_MODELS_ROUTES } from "@openbot/contracts/team-protocol/agent-backup-models-v1";
 import { AGENT_HOST_SETTINGS_ROUTES } from "@openbot/contracts/team-protocol/agent-host-settings-v1";
 import { AGENT_IMPORT_CAPABILITY } from "@openbot/contracts/team-protocol/agent-import-v1";
+import { AGENT_TASK_LIMIT_ROUTES } from "@openbot/contracts/team-protocol/agent-task-limit-v1";
 import { AGENT_TASKS_CAPABILITY } from "@openbot/contracts/team-protocol/agent-tasks-v1";
+import { BROWSER_PROFILES_CAPABILITY } from "@openbot/contracts/team-protocol/browser-profiles-v1";
 import { CONNECTORS_CAPABILITY } from "@openbot/contracts/team-protocol/connectors-v1";
 import { CONTEXT_RESET_CAPABILITY } from "@openbot/contracts/team-protocol/context-reset-v1";
 import { AGENT_HIDDEN_CAPABILITY, TEAM_AGENT_CREATE_MODEL_CAPABILITY } from "@openbot/contracts/team-protocol/current";
@@ -31,6 +35,7 @@ import { ROUTINE_FLOWS_CAPABILITY } from "@openbot/contracts/team-protocol/routi
 import { ROUTINE_RECOVERY_CAPABILITY } from "@openbot/contracts/team-protocol/routine-recovery-v1";
 import { SIDE_QUESTION_CAPABILITY } from "@openbot/contracts/team-protocol/side-question-v1";
 import { SIGN_IN_RELAY_CAPABILITY } from "@openbot/contracts/team-protocol/sign-in-relay-v1";
+import { WEBHOOK_TESTS_CAPABILITY } from "@openbot/contracts/team-protocol/webhook-tests-v1";
 import { runTeamEffect } from "@openbot/team-client";
 import { channelForThread } from "@openbot/team-client/channel-notifications";
 import {
@@ -124,6 +129,8 @@ import { type CreationPreference, resolveCreationModel } from "../agents/agent-c
 import { claimErrorToast, readableAgentError } from "../agents/agent-error-text";
 import { withHostAccountUsage, withHostProfileAccount } from "../agents/host-provider-accounts";
 import { createRemoteAgentAdmin, updateRemoteAgent } from "../agents/remote-agent-admin";
+import type { ServerBrowserProfilesOptions } from "../browser/ServerBrowserProfilesPanel";
+import { createBrowserProfilesStore } from "../browser/stores/browser-profiles-store";
 import { ChannelErrorNotice } from "../channels/ChannelConversationParts";
 import { createChannelConversation } from "../channels/channel-conversation";
 import { readChannelSelection, writeChannelSelection } from "../channels/channel-selection";
@@ -140,6 +147,7 @@ import type { AgentSettingsRequest } from "../conversation/conversation-types";
 import { webEventRoutinesApi } from "../conversation/routine-webhooks-api";
 import type { FilesPort } from "../files/files-port";
 import { hostSetupProviderProps } from "../onboarding/host-setup-provider-props";
+import { createRoutineTimezonePrompt } from "../schedule/routine-timezone-prompt";
 import type { ScheduleRoutine } from "../schedule/SchedulePanel";
 import { AddServerOverlay, type AddServerResume } from "../servers/AddServerOverlay";
 import {
@@ -153,7 +161,12 @@ import type { HostAgentAccessCalls } from "../servers/ServerRolesSection";
 import type { ServerHostedSitesOptions, ServerSettingsSection } from "../servers/ServerSettingsModal";
 import type { HostTimezoneCalls } from "../servers/ServerTimezoneSetting";
 import type { HostUpdateCalls } from "../servers/ServerUpdatePanel";
-import { remoteAdminServer, remoteUpdateServer, serverRoleCanAdminister } from "../servers/server-capabilities";
+import {
+  remoteAdminServer,
+  remoteUpdateServer,
+  serverCanAdminister,
+  serverRoleCanAdminister,
+} from "../servers/server-capabilities";
 import { createServerConnectionToast } from "../servers/server-connection-toast";
 import {
   offerServerUpdate,
@@ -175,6 +188,7 @@ import { createWebAccountUsage } from "./web-account-usage";
 import { createWebAgentImportCalls } from "./web-agent-import";
 import { openWebLink } from "./web-attachments";
 import { createWebBillingCalls, createWebLicenseCalls } from "./web-billing";
+import { webBitwardenConnectorPort } from "./web-bitwarden-connector";
 import { createWebChannelsPort } from "./web-channels-runtime";
 import { createWebWorkspace, type WebRuntimeFactory } from "./web-client-context";
 import { createWebConversationRuntime } from "./web-conversation-runtime";
@@ -250,6 +264,9 @@ type WebWorkspaceProps = {
   /** The interface language this browser keeps. Account settings change it. */
   language: AppLanguage;
   onChangeLanguage: (language: AppLanguage) => void;
+  /** The theme this browser keeps. Account settings change it. */
+  appearance: AppAppearance;
+  onChangeAppearance: (appearance: AppAppearance) => void;
 };
 
 const WebAccountSettings = lazy(() => import("./WebAccountSettings"));
@@ -586,6 +603,8 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
   // The same owner or admin reads and saves `missedPolicy` and the missed-run history on such a host.
   const routineRecoveryEnabled = () =>
     eventsEnabled() && workspace.state.capabilities.includes(ROUTINE_RECOVERY_CAPABILITY);
+  // The same owner or admin asks such a host to send a test event to a webhook routine.
+  const webhookTestsEnabled = () => eventsEnabled() && workspace.state.capabilities.includes(WEBHOOK_TESTS_CAPABILITY);
   const providerAdmin = createWebProviderSettings({
     server: () => (workspace.runtime.admin ? server() : undefined),
     request: hostRequest,
@@ -634,6 +653,8 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
       canAdministerServer(workspace.state.host?.role),
     routineRecoveryEnabled,
     () => workspace.state.capabilities.includes(SIDE_QUESTION_CAPABILITY),
+    webhookTestsEnabled,
+    () => workspace.state.capabilities.includes(BROWSER_PROFILES_CAPABILITY),
   );
   const remoteAgentAdmin = createRemoteAgentAdmin(
     () => {
@@ -662,6 +683,13 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
             }),
           },
         }),
+      getAgentTaskLimit: (agentId, serverId) =>
+        hostRequest(serverId)("POST", AGENT_TASK_LIMIT_ROUTES.settings, decodeAgentTaskLimitSettings, { agentId }),
+      updateAgentTaskLimit: ({ agentId, taskLimit }, serverId) =>
+        hostRequest(serverId)("POST", AGENT_TASK_LIMIT_ROUTES.update, decodeAgentTaskLimitSettings, {
+          agentId,
+          taskLimit,
+        }),
       getAgentAdminSettings: (agentId, serverId) =>
         runTeamEffect(
           getAgentAdminSettings(hostRequest(serverId), agentId).pipe(Effect.mapError((error) => error.cause)),
@@ -681,6 +709,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
     const automation = remoteAgentAdmin.automation();
     const backupModels = remoteAgentAdmin.backupModels();
     const usageLimitReturn = remoteAgentAdmin.usageLimitReturn();
+    const taskLimit = remoteAgentAdmin.taskLimit();
     return agent
       ? {
           ...agent,
@@ -688,6 +717,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
           ...(automation === undefined ? {} : { allowAutomation: automation }),
           ...(backupModels ? { backupModels } : {}),
           ...(usageLimitReturn ? { usageLimitReturn } : {}),
+          ...(typeof taskLimit === "number" ? { taskLimit } : {}),
         }
       : agent;
   });
@@ -755,6 +785,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
   const connectorTarget = createMemo(() => remoteAdminServer(server(), CONNECTORS_CAPABILITY));
   const githubPort = webGitHubConnectorPort(() => hostRequest());
   const onePasswordPort = webOnePasswordConnectorPort(() => hostRequest());
+  const bitwardenPort = webBitwardenConnectorPort(() => hostRequest());
   const webMessaging = webHostMessaging(hostRequest, () =>
     workspace.state.capabilities.includes(DISCORD_ACCESS_CAPABILITY),
   );
@@ -765,6 +796,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
       {
         github: () => githubPort,
         onePassword: () => onePasswordPort,
+        bitwarden: () => bitwardenPort,
         messaging: hostMessagingApi(
           () => connectorTarget()?.id,
           () => webMessaging.api,
@@ -1008,6 +1040,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
     () => workspace.state.host?.hostId ?? "",
     eventsEnabled,
     routineRecoveryEnabled,
+    webhookTestsEnabled,
   );
   const channelsSupported = () =>
     workspace.state.status === "online" &&
@@ -1109,10 +1142,52 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
   createEffect(firstAgent, (first) => {
     if (first && !untrack(channelOpen)) setCreating(true);
   });
-  const webhookRoutines = webEventRoutinesApi((...args) => hostRequest()(...args), routineRecoveryEnabled);
+  const webhookRoutines = webEventRoutinesApi(
+    (...args) => hostRequest()(...args),
+    routineRecoveryEnabled,
+    webhookTestsEnabled,
+  );
+  // Asks to move the connected host's routines after this device's time zone changed.
+  createRoutineTimezonePrompt(() => {
+    const current = server();
+    if (current?.state !== "online" || !workspace.runtime.admin || !eventsEnabled()) return [];
+    return [
+      {
+        id: current.id,
+        name: current.name,
+        calendar: (input) => scheduleSource.calendar(input, current.id),
+        events: webhookRoutines,
+        timezone: serverCanAdminister(current, "host-timezone-v1") ? hostTimezoneCalls : undefined,
+      },
+    ];
+  });
   const routineFlowsHost = webRoutineFlowsHost(workspace.runtime, workspace.onHostEvent, () =>
     eventsEnabled() ? webhookRoutines : undefined,
   );
+  /** The host's Providers settings, which an owner or admin of the host can open. */
+  const openProviderSettings = (trigger: HTMLElement) => {
+    const current = server();
+    if (current) void openServerSettings(current.id, trigger, "providers");
+  };
+  // The Browser profiles section, for an owner or admin of a host with `browser-profiles-v1`. One
+  // store per host, so the list of the last host never shows for the next.
+  // The store follows the host id, so a new summary of the same host keeps the loaded list.
+  const browserProfileHostId = createMemo(() => {
+    const current = server();
+    return serverCanAdminister(current, BROWSER_PROFILES_CAPABILITY) ? current?.id : undefined;
+  });
+  const browserProfiles = createMemo(() => {
+    const calls = runtime.browserProfiles;
+    return calls && browserProfileHostId() !== undefined ? createBrowserProfilesStore(() => calls) : undefined;
+  });
+  const browserProfileSettings = createMemo((): ServerBrowserProfilesOptions | undefined => {
+    const store = browserProfiles();
+    return store ? { store, listAgents: async () => workspace.profiles() } : undefined;
+  });
+  const openBrowserProfileSettings = (trigger: HTMLElement) => {
+    const current = server();
+    if (current) void openServerSettings(current.id, trigger, "browser-profiles");
+  };
   /** A new agent on the canvas starts on the model the agent form would pick. */
   const newAgentModels = createMemo((): DiagramModelChoice | undefined => {
     if (!workspace.state.capabilities.includes(TEAM_AGENT_CREATE_MODEL_CAPABILITY)) return undefined;
@@ -1376,6 +1451,16 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
     void select(agentId);
     setSettingsRequest({ agentId, nonce: Date.now(), routine: { routineId: routine.id, name: routine.name } });
   }
+  function createRoutine(agentId: string): void {
+    setMobilePane("conversation");
+    void select(agentId);
+    setSettingsRequest({ agentId, nonce: Date.now(), routine: "new" });
+  }
+  /** As on desktop: the empty canvas opens the agent's chat with a new routine in its settings. */
+  function createCanvasRoutine(agentId: string): void {
+    layout.setSidebarView("agents");
+    createRoutine(agentId);
+  }
   const unavailable = async (): Promise<never> => {
     throw new Error(t("webClient.error.desktopOnly"));
   };
@@ -1386,6 +1471,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
         <div class="app-window web-app-window">
           <PageRail
             hidden={false}
+            logo={{ variant: "production", href: "/" }}
             current={railPage()}
             usageRows={usageRows()}
             onAgents={() => showSidebarView("agents")}
@@ -1537,6 +1623,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                             void select(agentId);
                           }}
                           onOpenRoutine={openRoutine}
+                          onCreateRoutine={createRoutine}
                         />
                       </Loading>
                     </Match>
@@ -1613,6 +1700,13 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                   }
                   collapsedSectionIds={workspace.preferences.collapsedSidebarSectionIds()}
                   onMutateLayout={workspace.mutateSidebarLayout}
+                  sectionDuplicateSupported={
+                    workspace.state.status === "online" &&
+                    workspace.state.capabilities.includes("agent-duplication") &&
+                    workspace.state.capabilities.includes("sidebar-layout")
+                  }
+                  duplicatingSectionIds={workspace.duplicatingSectionIds()}
+                  onDuplicateSection={workspace.duplicateSection}
                   onToggleSection={workspace.preferences.toggleSidebarSection}
                   pinnedItems={workspace.preferences.pinnedSidebarItems()}
                   peopleOrder={[]}
@@ -1762,6 +1856,8 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                       calls={accountCalls}
                       language={props.language}
                       onChangeLanguage={props.onChangeLanguage}
+                      appearance={props.appearance}
+                      onChangeAppearance={props.onChangeAppearance}
                       onOpenBilling={() => setBillingOpen(true)}
                       onSignOut={signOut}
                     />
@@ -1876,6 +1972,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                       hostTimezone={{ calls: hostTimezoneCalls }}
                       hostMemoryLimit={{ calls: hostMemoryLimitCalls }}
                       agentAccess={{ calls: hostAgentAccessCalls, listAgents: () => workspace.runtime.listAgents() }}
+                      browserProfiles={browserProfileSettings()}
                       // Any member imports into a host with `agent-import-v1`.
                       agentImport={
                         workspace.state.capabilities.includes(AGENT_IMPORT_CAPABILITY)
@@ -1994,6 +2091,9 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                 first={firstAgent()}
                 preference={serverSetupChoice()}
                 customProviders={providerSettings()?.customProviders}
+                onManageProviders={providerSettings() ? openProviderSettings : undefined}
+                liveModels={models()}
+                liveStatus={status()}
                 // A new form starts empty, with the avatar that the first-agent row showed.
                 initialDraft={{ ...createFirstAgentDraft(), ...untrack(agentAvatar) }}
                 onDraftChange={({ avatarSeed, avatarHue }) => setAgentAvatar({ avatarSeed, avatarHue })}
@@ -2020,7 +2120,12 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                     isOwnSender,
                     connectionReady: () => workspace.state.status === "online",
                     // The routines of a joined host go through its event API, which the channels port gives.
-                    routines: { localHost: () => false, eventsServerId: () => undefined, routineRecovery: () => false },
+                    routines: {
+                      localHost: () => false,
+                      eventsServerId: () => undefined,
+                      routineRecovery: () => false,
+                      webhookTests: () => false,
+                    },
                     approvals: () => workspace.state.approvals,
                     takeovers: () => workspace.state.takeovers,
                   });
@@ -2145,6 +2250,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                           agents={workspace.profiles()}
                           newAgentModels={newAgentModels()}
                           createAgent={createCanvasAgent}
+                          onCreateRoutine={createCanvasRoutine}
                         />
                       </Loading>
                     )}
@@ -2178,14 +2284,8 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                   (providerSettings()?.connection?.connectKind(provider) ?? null) !== null
                 }
                 onSignInProvider={composerSignIn() ? connectFromComposer : undefined}
-                onManageProviders={
-                  providerSettings()
-                    ? (trigger: HTMLElement) => {
-                        const current = server();
-                        if (current) void openServerSettings(current.id, trigger, "providers");
-                      }
-                    : undefined
-                }
+                onManageProviders={providerSettings() ? openProviderSettings : undefined}
+                onManageBrowserProfiles={browserProfiles() ? openBrowserProfileSettings : undefined}
                 agent={conversationAgent()}
                 agents={workspace.profiles()}
                 modelOptions={models()}
@@ -2202,6 +2302,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                 activityDetail={
                   workspace.state.selectedId ? workspace.state.progress[workspace.state.selectedId]?.detail : undefined
                 }
+                turnStepLines={workspace.stepLines()}
                 skillsMarketplaceOpen={marketplaceOpen()}
                 mcpSettingsOpen={serverSettings.state.open || marketplaceOpen()}
                 globalOverlayOpen={
@@ -2274,6 +2375,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                 onAlwaysAllowApproval={view.alwaysAllowApproval()}
                 agentAutoApproves={remoteAgentAdmin.autoApproves()}
                 remoteBackupModelsLoaded={remoteAgentAdmin.backupModels() !== undefined}
+                remoteTaskLimitLoaded={remoteAgentAdmin.taskLimit() !== undefined}
                 onUpdateAgentPermissions={remoteAgentAdmin.settings() ? remoteAgentAdmin.update : undefined}
                 onClearAgentContext={clearSelectedAgentContext()}
                 onRespondToBrowserTakeover={(decision) => workspace.respondToBrowserTakeover(decision)}

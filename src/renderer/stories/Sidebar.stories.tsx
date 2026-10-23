@@ -437,8 +437,14 @@ export const AgentContextMenu: Story = {
   decorators: [(Story) => <div style={{ width: "280px", height: "100vh" }}>{Story()}</div>],
 };
 
+/** A custom section's menu offers Duplicate when the server can copy agents and change the layout. */
 export const Sections: Story = {
-  args: { layout: sectionedLayout, pinnedItems: pinnedOne },
+  args: {
+    layout: sectionedLayout,
+    pinnedItems: pinnedOne,
+    sectionDuplicateSupported: true,
+    onDuplicateSection: fn(),
+  },
   decorators: [(Story) => <div style={{ width: "280px", height: "100vh" }}>{Story()}</div>],
 };
 

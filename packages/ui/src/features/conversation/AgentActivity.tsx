@@ -1,8 +1,12 @@
 import type { AppTextKey } from "@openbot/i18n";
-import { createEffect, createMemo, createSignal, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { createEffect, createMemo, createSignal, createUniqueId, Show } from "solid-js";
+import { Button } from "../../button";
 import type { AgentProfile } from "../../data";
+import { ChevronDown } from "../../icons";
 import { useText } from "../../text";
 import { AgentAvatar } from "../agents/AgentAvatar";
+import { type AgentStep, AgentStepList } from "./AgentSteps";
 
 /**
  * The English source of each label. A label is an identifier here: render it with
@@ -75,6 +79,10 @@ export function AgentActivityIndicator(props: {
    * so a working agent reads differently from a stalled one.
    */
   since?: number;
+  /** The steps of the running turn. With steps, a chevron opens them under the line. */
+  steps?: readonly AgentStep[] | undefined;
+  /** The "Show agent steps" setting: the steps are open when the turn starts. */
+  stepsOpenByDefault?: boolean | undefined;
 }) {
   const { t, format } = useText();
   const label = () => props.detail ?? t(agentActivityLabelKey(props.label));
@@ -100,11 +108,68 @@ export function AgentActivityIndicator(props: {
           label: label(),
         })}
       />
-      <section class="agent-activity-content" aria-label={t("chat.activity.current")}>
+      <AgentActivityBody
+        steps={props.steps}
+        stepsOpenByDefault={props.stepsOpenByDefault}
+        live={props.phase !== "exiting"}
+      >
         <AgentAvatar agent={props.agent} mood="working" class="agent-activity-avatar" />
         <span class="agent-activity-label">{label()}</span>
         <Show when={elapsed()}>{(time) => <span class="agent-activity-elapsed">{time()}</span>}</Show>
+      </AgentActivityBody>
+    </div>
+  );
+}
+
+/**
+ * The activity line, with a chevron that opens the steps of the running work under it. The agent
+ * chat and the channel give the faces and the label as children, so both have one steps toggle.
+ */
+export function AgentActivityBody(props: {
+  /** A class for the line besides `agent-activity-content`. */
+  class?: string;
+  steps?: readonly AgentStep[] | undefined;
+  /** The "Show agent steps" setting: the steps are open when the work starts. */
+  stepsOpenByDefault?: boolean | undefined;
+  live: boolean;
+  children: JSX.Element;
+}) {
+  const { t } = useText();
+  const stepsId = createUniqueId();
+  const [stepsChoice, setStepsChoice] = createSignal<boolean>();
+  const hasSteps = () => (props.steps?.length ?? 0) > 0;
+  const stepsOpen = () => hasSteps() && (stepsChoice() ?? props.stepsOpenByDefault === true);
+  // A new turn starts with no steps, and with the setting again.
+  createEffect(hasSteps, (has) => {
+    if (!has) setStepsChoice(undefined);
+  });
+  return (
+    <div class="agent-activity-body">
+      <section
+        class={props.class ? `agent-activity-content ${props.class}` : "agent-activity-content"}
+        aria-label={t("chat.activity.current")}
+      >
+        {props.children}
+        <Show when={hasSteps()}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            class="agent-steps-toggle"
+            aria-expanded={stepsOpen() ? "true" : "false"}
+            aria-controls={stepsOpen() ? stepsId : undefined}
+            aria-label={stepsOpen() ? t("chat.steps.hide") : t("chat.steps.show")}
+            onClick={() => setStepsChoice(!stepsOpen())}
+          >
+            <ChevronDown class="agent-steps-chevron" aria-hidden="true" />
+          </Button>
+        </Show>
       </section>
+      <Show when={stepsOpen()}>
+        <div class="agent-activity-steps">
+          <AgentStepList id={stepsId} steps={props.steps ?? []} live={props.live} />
+        </div>
+      </Show>
     </div>
   );
 }

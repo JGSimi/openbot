@@ -8,6 +8,7 @@ import type {
   AvatarHue,
   ChannelRoutingConversationEvent,
   ClientAgentSummary,
+  ConversationMemoryChange,
   ConversationMessageSender,
   ConversationPlan,
   ConversationQuestionPrompt,
@@ -38,6 +39,7 @@ export type MessageKind =
   | "action-marker"
   | "plan"
   | "subagents"
+  | "memory-changes"
   | "error";
 
 /** The plan of one turn. `stopped` is true when the turn was stopped or failed before it ended. */
@@ -146,6 +148,8 @@ export type ChatActionMarkerModel =
   | { kind: "context-reset"; timestamp: string }
   /** The agent left its model for a usage limit, or went back to it. `text` is the host's note. */
   | { kind: "model-switch"; reason: ModelSwitchReason; text: string; timestamp: string }
+  /** A member agent changed the channel at a person's request. `text` is the host's note. */
+  | { kind: "channel-change"; text: string; timestamp: string }
   | {
       kind: "unavailable";
       label: string;
@@ -203,9 +207,16 @@ export interface AgentMessage {
   actionMarker?: ChatActionMarkerModel | undefined;
   items?: string[];
   itemIds?: string[];
+  /** When the host wrote each of `items`, to place them between a turn's progress lines. */
+  itemCreatedAt?: string[];
   plan?: AgentMessagePlan | undefined;
   /** The subagents that the agent started in this turn, on a `subagents` message. */
   subagents?: ConversationSubagent[] | undefined;
+  /**
+   * The memory changes that the turn committed, on a `memory-changes` message. Absent from a host
+   * that sends only the text, such as a Team API host.
+   */
+  memoryChanges?: ConversationMemoryChange[] | undefined;
 }
 
 export interface AgentProfile {
@@ -229,6 +240,10 @@ export interface AgentProfile {
   allowNewChat?: boolean | undefined;
   /** Absent means off. Absent for an agent on a remote host too, which does not share it. */
   quickAcknowledgement?: boolean | undefined;
+  /** Absent means off. Absent for an agent on a remote host too, which does not share it. */
+  ownBrowserSession?: boolean | undefined;
+  /** The named browser profile of the agent's tabs. Absent for the shared or the agent's own session. */
+  browserProfileId?: string | undefined;
   /** Absent means off. Absent for an agent on a remote host too, which does not share it. */
   fastMode?: boolean | undefined;
   /** Absent means the app default. Absent for an agent on a remote host too, which does not share it. */

@@ -585,9 +585,9 @@ stage the user waits on is bounded by a timeout and recorded in `logs/update/upd
 check, download, or restart reports an actionable error and can be retried in place.
 
 The voice runtime (the sherpa-onnx N-API addon and ONNX Runtime, from the pinned `sherpa-onnx-*`
-npm packages) is part of the macOS and Windows applications, in `voice/runtime`. Linux ships no voice
-runtime, so voice prompts report themselves as unavailable there. The Linux arm64 AppImage also
-ships no remote desktop runtime. The NVIDIA Parakeet TDT 0.6B v3 int8 model is not part of an application or update
+npm packages) is part of the macOS, Windows and Linux applications, in `voice/runtime`. Each Linux
+AppImage carries the runtime of its architecture. The Linux arm64 AppImage ships no remote desktop
+runtime. The NVIDIA Parakeet TDT 0.6B v3 int8 model is not part of an application or update
 artifact. OpenBot downloads its four pinned files on first voice use, checks the size and SHA-256 of
 each, and keeps the verified files in `runtimes/parakeet-tdt-0.6b-v3-int8` in the user data directory
 for later offline use. The optional Whisper large-v3 turbo int8 model, which takes a fixed dictation
@@ -643,9 +643,17 @@ Before creating the first tag or any later release:
 11. confirm the canary update does not crash in `CFURLConnectionSynchronous`, preserves data, starts
     the new version, and can run three provider downloads with restricted memory;
 12. on Windows 10 and 11 x64, confirm that normal exit, restart, and sign-out do not start NSIS, while
-    `Restart and install` does start it. With OpenBot closed and with it open, confirm that Open
-    OpenBot on a `/join` page opens OpenBot and shows the invitation once, and that uninstall
-    removes `HKCU\Software\Classes\openbot`;
+    `Restart and install` does start it, shows no installer page, and opens OpenBot again. With
+    OpenBot closed and with it open, confirm that Open OpenBot on a `/join` page opens OpenBot and
+    shows the invitation once, and that uninstall
+    removes `HKCU\Software\Classes\openbot`. Update from the previous release, then install to a
+    folder on a second disk. Confirm that the installer has no "All users" page, that an update
+    installs to the same folder, that `icacls` on that folder lists only the user, `SYSTEM` and
+    `Administrators`, and that the uninstaller removes only that folder. Choose
+    `%USERPROFILE%\OpenBot` with an agent workspace in it, and confirm that OpenBot installs to
+    `%USERPROFILE%\OpenBot\OpenBot` and that uninstall keeps the workspace. As a second account,
+    make an empty `D:\OpenBot`. As the first account, choose it, and confirm that OpenBot installs to
+    `D:\OpenBot\OpenBot` and that the second account cannot write there;
 13. on Ubuntu 24.04 x64 with the AppArmor profile from `build/linux/openbot.apparmor` installed,
     confirm the AppImage starts with the sandbox on, that `xdg-open 'openbot://join?...'` focuses the
     running application, that a provider downloads in-app, that the page rail is drawn, and that the

@@ -72,6 +72,10 @@ export interface SidebarProps {
   layoutMutable?: boolean | undefined;
   collapsedSectionIds: string[];
   onMutateLayout: (action: SidebarLayoutAction) => Promise<void>;
+  /** Whether this server can copy a section with its agents. Without it, the section menu has no duplicate item. */
+  sectionDuplicateSupported?: boolean | undefined;
+  duplicatingSectionIds?: ReadonlySet<string> | undefined;
+  onDuplicateSection?: ((sectionId: string) => Promise<void>) | undefined;
   onToggleSection: (sectionId: string) => void;
   pinnedItems: SidebarPinnedItem[];
   peopleOrder: string[];

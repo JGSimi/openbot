@@ -19,6 +19,7 @@ import {
   type AccountSession,
   type AgentMemoryLimitPreference,
   type AnalyticsPreference,
+  type AppAppearancePreference,
   type AppBehaviorPreference,
   type AppInfo,
   type AppInterfaceSizePreference,
@@ -50,6 +51,7 @@ import {
   isAgentMemoryLimit,
   isAgentModel,
   isAgentProvider,
+  isAppAppearance,
   isAppInterfaceSize,
   isAppLanguage,
   isAppLogoColor,
@@ -66,6 +68,7 @@ import {
   isProviderDetectionSettings,
   isRemoteDesktopSetupStatus,
   isRemoteDesktopTestStatus,
+  isRemoteNetworkRoute,
   isSpeechVoice,
   isVoiceLanguage,
   isVoiceModelId,
@@ -81,6 +84,7 @@ import {
   parseOnePasswordConnectorStatus,
   type RemoteDesktopSetupStatus,
   type RemoteDesktopTestStatus,
+  type RemoteNetworkRouteState,
   type RemoteSessionReusePreference,
   SPEECH_MODEL_ID,
   type SpeechAudio,
@@ -166,6 +170,13 @@ export function decodeAppLogoColorPreference(value: unknown): AppLogoColorPrefer
   const preference = decodeRecord(value, "logo color preference");
   if (!isAppLogoColor(preference.color)) throw new Error("Invalid logo color.");
   return { color: preference.color };
+}
+
+export function decodeAppAppearancePreference(value: unknown): AppAppearancePreference {
+  const preference = decodeRecord(value, "appearance preference");
+  if (!isAppAppearance(preference.appearance)) throw new Error("Invalid appearance.");
+  if (typeof preference.transparentWindow !== "boolean") throw new Error("Invalid transparent window.");
+  return { appearance: preference.appearance, transparentWindow: preference.transparentWindow };
 }
 
 export function decodeAppInterfaceSizePreference(value: unknown): AppInterfaceSizePreference {
@@ -320,6 +331,12 @@ export function decodeRemoteSessionReusePreference(value: unknown): RemoteSessio
   return {
     keepBetweenRuns: requiredBoolean(decodeRecord(value, "remote session preference"), "keepBetweenRuns"),
   };
+}
+
+export function decodeRemoteNetworkRouteState(value: unknown): RemoteNetworkRouteState {
+  const state = decodeRecord(value, "remote network route");
+  if (!isRemoteNetworkRoute(state.route)) throw new Error("Invalid remote network route.");
+  return { route: state.route, tailscaleConnected: requiredBoolean(state, "tailscaleConnected") };
 }
 
 export function decodeNotificationPreference(value: unknown): NotificationPreference {
@@ -565,7 +582,18 @@ export function decodeRemoteDesktopTestFromMain(value: unknown): RemoteDesktopTe
 }
 
 export function decodeBitwardenConnectorStatus(value: unknown): BitwardenConnectorStatus {
-  if (!value || typeof value !== "object" || !("connected" in value) || typeof value.connected !== "boolean")
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("connected" in value) ||
+    !isBoolean(value.connected) ||
+    !("connecting" in value) ||
+    !isBoolean(value.connecting) ||
+    !("serverUrl" in value) ||
+    !(value.serverUrl === null || isString(value.serverUrl)) ||
+    !("error" in value) ||
+    !(value.error === null || isString(value.error))
+  )
     throw new Error("Invalid Bitwarden connector response.");
-  return { connected: value.connected };
+  return { connected: value.connected, connecting: value.connecting, serverUrl: value.serverUrl, error: value.error };
 }

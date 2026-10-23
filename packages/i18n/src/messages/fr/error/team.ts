@@ -10,6 +10,7 @@ export const messages = {
   "error.team.identityCreateFailed": "Impossible de créer l’identité de l’équipe.",
   "error.team.accountChangedDuringCreate": "Le compte connecté a changé pendant la création de ce serveur.",
   "error.team.notConfigured": "Cet OpenBot n’a pas été configuré.",
+  "error.team.keyRotationMissing": "Aucun changement de clé du serveur n’est en attente.",
   "error.team.serverNotActive": "Ce serveur n’est plus le serveur actif du compte connecté.",
   "error.team.logoInvalid": "Choisissez une image PNG, JPEG ou WebP valide de 512 Ko au maximum.",
   "error.team.ownerMembershipConflict":
@@ -62,6 +63,7 @@ export const messages = {
   "error.team.channelDeleteUnsupported": "La suppression de canaux n’est pas prise en charge par cette connexion.",
   "error.team.membersCannotDeleteChannels": "Les membres ne peuvent pas supprimer de canaux.",
   "error.team.membersCannotArchiveChannels": "Les membres ne peuvent pas archiver de canaux.",
+  "error.team.membersCannotRestoreChannels": "Les membres ne peuvent pas restaurer de canaux.",
   "error.team.sharedDataUnsupported": "Les données partagées ne sont pas prises en charge par cette connexion.",
   "error.team.agentInstallUnsupported": "L’ajout d’agents n’est pas pris en charge par cette connexion.",
   "error.team.agentHideUnsupported": "Le masquage d’agents n’est pas pris en charge par cette connexion.",
@@ -91,6 +93,7 @@ export const messages = {
     "Les modifications de l’identité du serveur ne sont pas prises en charge par cette connexion.",
   "error.team.hostUpdateUnsupported": "Les mises à jour de l’hôte ne sont pas prises en charge par cette connexion.",
   "error.team.hostTimezoneUnsupported": "Cette connexion ne prend pas en charge le fuseau horaire du serveur.",
+  "error.team.routineResultsUnsupported": "Cette connexion ne prend pas en charge les destinations des routines.",
   "error.team.agentMemoryLimitUnsupported": "Cette connexion ne prend pas en charge la limite de souvenirs des agents.",
   "error.team.attachmentNameRequired": "Un nom de pièce jointe sûr est requis.",
   "error.team.attachmentNotFound": "Pièce jointe introuvable.",

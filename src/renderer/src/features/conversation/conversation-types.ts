@@ -40,6 +40,7 @@ import type { UnloadedHistory } from "@openbot/ui/features/conversation/ChatScro
 import type { JSX } from "@solidjs/web";
 import type { ConnectorRegistry } from "../connectors/connector-registry";
 import type { ConversationRuntime } from "./conversation-runtime";
+import type { TurnStepLines } from "./turn-step-lines";
 
 /**
  * What a conversation is, as data. These live apart from `ConversationView.tsx`
@@ -50,11 +51,11 @@ import type { ConversationRuntime } from "./conversation-runtime";
  * through only because one direction is `import type`.
  */
 
-/** Opens an agent's settings panel. A `routine` opens that routine's settings in it. */
+/** Opens an agent's settings panel. A `routine` opens that routine's settings in it; `"new"` starts a routine. */
 export interface AgentSettingsRequest {
   agentId: string;
   nonce: number;
-  routine?: { routineId: string; name: string };
+  routine?: { routineId: string; name: string } | "new";
 }
 
 /** The conversation that a draft, an error or a send belongs to. For a channel, `agentId` is the channel id. */
@@ -99,6 +100,8 @@ export interface ConversationChannelSource {
   author: (message: AgentMessage) => ChatMessageAuthor;
   /** The agents that work now. */
   workers: () => ChannelWorker[];
+  /** The turns of the workers that run now, whose steps show under the activity line. */
+  workingTurns: () => readonly string[];
   /** The agent that the prompt, approval or takeover on screen comes from. */
   interactionAgentName: () => string | undefined;
   /** The agents that a lead asked and that did not reply yet. */
@@ -173,6 +176,11 @@ export interface ConversationProps {
   onSignInWithCodeProvider?: ((provider: AgentProviderId) => void) | undefined;
   /** Open the Providers section of this server's settings, where the user adds an endpoint. */
   onManageProviders?: ((trigger: HTMLElement) => void) | undefined;
+  /**
+   * Open the Browser profiles section of the settings of the server that runs the agent. Absent for
+   * a member, and for a host without `browser-profiles-v1`.
+   */
+  onManageBrowserProfiles?: ((trigger: HTMLElement) => void) | undefined;
   agent: AgentProfile | undefined;
   agents: AgentProfile[];
   /**
@@ -199,6 +207,8 @@ export interface ConversationProps {
   olderError?: string | null | undefined;
   activeTurnId: string | null | undefined;
   activityDetail?: string | undefined;
+  /** The host's progress lines of the newest turns, by turn, for the steps of each turn. */
+  turnStepLines?: TurnStepLines | undefined;
   skillsMarketplaceOpen?: boolean | undefined;
   /**
    * True while a surface that can add or remove one of the host's MCP servers is open: the server
@@ -288,6 +298,8 @@ export interface ConversationProps {
   agentAutoApproves?: boolean | undefined;
   /** Whether a joined server's host answered with the agent's backup models: owners and admins only. */
   remoteBackupModelsLoaded?: boolean | undefined;
+  /** Whether a joined server's host answered with the agent's task limit: owners and admins only. */
+  remoteTaskLimitLoaded?: boolean | undefined;
   /** The app default an agent without its own busy-message setting follows. Local agents only. */
   defaultBusyMessageMode?: BusyMessageMode | undefined;
   /** The app memory cap. Local agents only. */
@@ -332,15 +344,19 @@ export interface ComposerDraft {
  */
 type SidebarFilePreviewSource =
   | { kind: "shared"; path: string }
-  /** `folder` is the folder view the file was opened from, so the panel can go back to it. */
-  | { kind: "workspace"; path: string; folder?: string | undefined }
+  /**
+   * `agentId` is the agent whose workspace holds the path. In a channel it is the agent that wrote
+   * the link, not the channel. `folder` is the folder view the file was opened from, so the panel
+   * can go back to it.
+   */
+  | { kind: "workspace"; agentId: string; path: string; folder?: string | undefined }
   | { kind: "attachment"; attachment: AttachmentSummary };
 
 export type SidebarFilePreview =
   | { ownerAgentId: string; source: SidebarFilePreviewSource; preview: FilePreview; directory?: undefined }
   | {
       ownerAgentId: string;
-      source: { kind: "workspace-folder"; path: string };
+      source: { kind: "workspace-folder"; agentId: string; path: string };
       preview: null;
       directory: WorkspaceDirectory;
     };

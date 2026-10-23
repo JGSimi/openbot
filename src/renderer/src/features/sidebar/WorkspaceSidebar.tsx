@@ -66,7 +66,8 @@ export function WorkspaceSidebar(props: { peopleEnabled: boolean }) {
     userHiddenAgents,
     userHiddenAgentIds,
   } = useAgents();
-  const { editAgent, duplicateAgent, deleteAgent, setAgentHiddenByUser } = useAgentActions();
+  const { editAgent, duplicateAgent, duplicateSection, duplicatingSectionIds, deleteAgent, setAgentHiddenByUser } =
+    useAgentActions();
   // The host refuses a member: a hidden agent stops for every member, as a deleted one does.
   const hideAllowed = () =>
     activeServerSupportsCapability(AGENT_HIDDEN_CAPABILITY) && serverRoleCanAdminister(activeServer());
@@ -205,6 +206,11 @@ export function WorkspaceSidebar(props: { peopleEnabled: boolean }) {
       layoutMutable={activeServerSupportsCapability("sidebar-layout")}
       collapsedSectionIds={collapsedSidebarSectionIds()}
       onMutateLayout={mutateSidebarLayout}
+      sectionDuplicateSupported={
+        activeServerSupportsCapability("agent-duplication") && activeServerSupportsCapability("sidebar-layout")
+      }
+      duplicatingSectionIds={duplicatingSectionIds()}
+      onDuplicateSection={duplicateSection}
       onToggleSection={toggleSidebarSection}
       pinnedItems={pinnedSidebarItems()}
       peopleOrder={sidebarPeopleOrder()}

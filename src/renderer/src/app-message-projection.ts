@@ -1,8 +1,10 @@
 import type { ClientAgentSummary, ConversationMessage, QueueDeliveryStatus } from "@openbot/contracts/ipc";
 import {
+  CONVERSATION_MEMORY_CHANGES_ITEM_TYPE,
   CONVERSATION_PLAN_ITEM_TYPE,
   CONVERSATION_SUBAGENTS_ITEM_TYPE,
   hostedSiteConversationEvent,
+  isChannelChangeMarker,
   isContextResetMarker,
   marketplaceSuggestionEvent,
   mcpSignInEvent,
@@ -43,6 +45,8 @@ export function toAgentProfile(stored: ClientAgentSummary): AgentProfile {
     ...(stored.allowNewChat === undefined ? {} : { allowNewChat: stored.allowNewChat }),
     ...(stored.quickAcknowledgement === undefined ? {} : { quickAcknowledgement: stored.quickAcknowledgement }),
     ...(stored.fastMode === undefined ? {} : { fastMode: stored.fastMode }),
+    ...(stored.ownBrowserSession === undefined ? {} : { ownBrowserSession: stored.ownBrowserSession }),
+    ...(stored.browserProfileId === undefined ? {} : { browserProfileId: stored.browserProfileId }),
     ...(stored.busyMessageMode === undefined ? {} : { busyMessageMode: stored.busyMessageMode }),
     ...(stored.taskLimit === undefined ? {} : { taskLimit: stored.taskLimit }),
     ...(stored.backupModels === undefined ? {} : { backupModels: stored.backupModels }),
@@ -67,6 +71,7 @@ export function toAgentMessage(message: ConversationMessage, ownerAgentId?: stri
   const actionMarker = chatActionMarker(message, ownerAgentId, routineEvent, routineRunEvent, hostedSiteEvent);
   const plan = messagePlan(message);
   const subagents = message.itemType === CONVERSATION_SUBAGENTS_ITEM_TYPE ? message.subagents : undefined;
+  const memoryChanges = message.author === "system" && message.itemType === CONVERSATION_MEMORY_CHANGES_ITEM_TYPE;
   const senderMember = message.author === "user" ? message.senderMember : undefined;
   const status =
     message.exchange || message.routine
@@ -97,7 +102,9 @@ export function toAgentMessage(message: ConversationMessage, ownerAgentId?: stri
           ? "plan"
           : subagents?.length
             ? "subagents"
-            : "text",
+            : memoryChanges
+              ? "memory-changes"
+              : "text",
     ...(exchangeSenderId === undefined ? {} : { senderAgentId: exchangeSenderId }),
     ...(senderMember === undefined ? {} : { senderMember }),
     ...(message.replyToMessageId === undefined ? {} : { replyToMessageId: message.replyToMessageId }),
@@ -114,6 +121,7 @@ export function toAgentMessage(message: ConversationMessage, ownerAgentId?: stri
     ...(actionMarker ? { actionMarker } : {}),
     ...(plan ? { plan } : {}),
     ...(subagents?.length ? { subagents } : {}),
+    ...(memoryChanges && message.memoryChanges ? { memoryChanges: message.memoryChanges } : {}),
     ...(status === undefined ? {} : { status }),
   };
 }
@@ -178,6 +186,7 @@ export function toAgentMessages(
       const text = cleanAgentMessageText(message.text);
       existing.items = [...(existing.items ?? []), text];
       existing.itemIds = [...(existing.itemIds ?? []), message.id];
+      existing.itemCreatedAt = [...(existing.itemCreatedAt ?? []), message.createdAt];
       existing.streaming = existing.streaming || message.status === "streaming";
       continue;
     }
@@ -195,6 +204,7 @@ export function toAgentMessages(
       kind: "thinking",
       items: [text],
       itemIds: [message.id],
+      itemCreatedAt: [message.createdAt],
     };
     thinkingByTurn.set(key, thinking);
     result.push(thinking);
@@ -308,6 +318,8 @@ function chatActionMarker(
   const switchReason = modelSwitchReason(message);
   if (switchReason)
     return { kind: "model-switch", reason: switchReason, text: message.text, timestamp: message.createdAt };
+  if (isChannelChangeMarker(message))
+    return { kind: "channel-change", text: message.text, timestamp: message.createdAt };
   const skillEvent = skillConversationEvent(message);
   if (skillEvent) return { ...skillEvent, kind: "skill-lifecycle", timestamp: message.createdAt };
   const suggestion = marketplaceSuggestionEvent(message);

@@ -82,10 +82,10 @@ export type ReportContext = Pick<Report, "surface" | "app_version" | "platform" 
  * Change a value only together with ANALYTICS.md.
  */
 export const ANALYTICS_GENERATIONS = {
-  desktop_host: 9,
+  desktop_host: 10,
   desktop: 11,
   web: 2,
-  mobile: 3,
+  mobile: 4,
 } as const satisfies Record<Report["surface"], number>;
 
 const FAILURE_CODES = new Set([

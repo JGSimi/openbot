@@ -114,6 +114,7 @@ import { trustSystemCertificates } from "./system-certificates";
 import { TeardownRegistry } from "./teardown-registry";
 import type { TraceFile } from "./trace-file";
 import { setIpcCallObserver } from "./trusted-ipc";
+import { setWindowAppearance } from "./window-appearance";
 
 const logger = createOpenBotLogger("main");
 
@@ -506,6 +507,7 @@ function registerIpcHandlers({
   mailbox,
   browser,
   browserPictureInPicture,
+  localSignIn,
   browserDock,
   browserView,
   updater,
@@ -517,8 +519,10 @@ function registerIpcHandlers({
   approvalAutomation,
   agentAdminSettings,
   agentHostSettings,
+  browserProfiles,
   language,
   logoColor,
+  appearance,
   interfaceSize,
   notificationPreference,
   busyMessageMode,
@@ -527,6 +531,7 @@ function registerIpcHandlers({
   teamStore,
   serverTimezone,
   remoteSessionReuse,
+  remoteNetworkRoute,
   remoteSessionCache,
   appBehavior,
   agentInitialization,
@@ -586,10 +591,13 @@ function registerIpcHandlers({
       busyMessageMode,
       agentMemoryLimit,
       remoteSessionReuse,
+      remoteNetworkRoute,
+      applyRemoteNetworkRoute: () => runCauseEffect(host.applyNetworkRoute()),
       remoteSessionCache,
       appBehavior,
       language,
       logoColor,
+      appearance,
       interfaceSize,
       initializeAgent: () => runCauseEffect(agentInitialization.start()),
       appVariant,
@@ -613,7 +621,7 @@ function registerIpcHandlers({
     ...hostedSiteIpcHandlers({ hostedSites, remoteServers, getMainWindow, translate: language.translate }),
     ...githubConnectorIpcHandlers({ githubConnector, remoteServers, openExternal: (url) => shell.openExternal(url) }),
     ...onePasswordConnectorIpcHandlers({ onePasswordConnector, remoteServers }),
-    ...bitwardenConnectorIpcHandlers({ bitwardenConnector }),
+    ...bitwardenConnectorIpcHandlers({ bitwardenConnector, remoteServers }),
     ...billingIpcHandlers({ billing }),
     ...licenseIpcHandlers({ license }),
     ...routineFeedIpcHandlers({ routineFeed }),
@@ -665,6 +673,7 @@ function registerIpcHandlers({
     ...agentAdminIpcHandlers({
       settings: agentAdminSettings,
       hostSettings: agentHostSettings,
+      browserProfiles,
       skills,
       marketplaceAgents,
       agentTemplates,
@@ -727,7 +736,7 @@ function registerIpcHandlers({
       }),
       openExternal: (address) => shell.openExternal(address),
     }),
-    ...browserIpcHandlers({ browserPictureInPicture, browser, remoteServers, browserView }),
+    ...browserIpcHandlers({ browserPictureInPicture, browser, remoteServers, browserView, localSignIn }),
   });
 }
 
@@ -1072,6 +1081,7 @@ if (!hasSingleInstanceLock) {
         teamStore,
         language,
         logoColor,
+        appearance,
         interfaceSize,
         trace,
         appBehavior,
@@ -1216,6 +1226,13 @@ if (!hasSingleInstanceLock) {
         applyAppIconColor(preference.color);
         for (const window of BrowserWindow.getAllWindows()) {
           sendToRenderer(window, IPC_ENDPOINTS.app.appLogoColorPreference, preference);
+        }
+      });
+      setWindowAppearance(appearance.preference);
+      appearance.subscribe((preference) => {
+        setWindowAppearance(preference);
+        for (const window of BrowserWindow.getAllWindows()) {
+          sendToRenderer(window, IPC_ENDPOINTS.app.appAppearancePreference, preference);
         }
       });
       interfaceSize.subscribe((preference) => {

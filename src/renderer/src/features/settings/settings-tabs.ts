@@ -12,7 +12,6 @@ import {
   Smartphone,
   UserRound,
 } from "@openbot/ui";
-import { voiceSupported } from "../conversation/voice-status";
 
 export type SettingsTab =
   | "general"
@@ -59,6 +58,7 @@ export const navItems: ReadonlyArray<SettingsNavItem> = [
       { titleKey: "settings.interfaceSize.title", descriptionKey: "settings.interfaceSize.description" },
       { titleKey: "settings.logoColor.title", descriptionKey: "settings.logoColor.description" },
       { titleKey: "settings.sendShortcut.title", descriptionKey: "settings.sendShortcut.description" },
+      { titleKey: "settings.showAgentSteps.title", descriptionKey: "settings.showAgentSteps.description" },
       { titleKey: "settings.busyMessage.title", descriptionKey: "settings.busyMessage.description" },
       { titleKey: "settings.externalLinks.title", descriptionKey: "settings.externalLinks.description" },
       { titleKey: "settings.launchAtLogin.title", descriptionKey: "settings.launchAtLogin.description" },
@@ -147,6 +147,10 @@ export const navItems: ReadonlyArray<SettingsNavItem> = [
       { titleKey: "settings.mobileConnect.signIn.title", descriptionKey: "settings.mobileConnect.signIn.description" },
       { titleKey: "settings.mobileConnect.link.title", descriptionKey: "settings.mobileConnect.link.description" },
       { titleKey: "settings.mobileConnect.devices.title" },
+      {
+        titleKey: "settings.mobileConnect.route.title",
+        descriptionKey: "settings.mobileConnect.route.description",
+      },
     ],
   },
   {
@@ -179,11 +183,10 @@ export function navItem(tab: SettingsTab): SettingsNavItem {
 }
 
 /**
- * Whether the settings panel and its search show the tab: no Dynamic Island off macOS and no Voice on
- * Linux. Hosted servers opens from its own entry, not from this panel.
+ * Whether the settings panel and its search show the tab: no Dynamic Island off macOS. Hosted servers
+ * opens from its own entry, not from this panel.
  */
 export function settingsTabShown(tab: SettingsTab, platform: AppInfo["platform"] | undefined): boolean {
   if (tab === "hosted-servers") return false;
-  if (tab === "dynamic-island") return platform === "darwin";
-  return tab !== "voice" || voiceSupported(platform);
+  return tab !== "dynamic-island" || platform === "darwin";
 }
